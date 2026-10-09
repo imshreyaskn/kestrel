@@ -28,7 +28,7 @@ CASES_FILE = Path("docs/evaluation/retrieval_cases.yaml")
 
 def load_retrieval_cases() -> list[dict]:
     assert CASES_FILE.exists(), f"Evaluation cases fixture not found at {CASES_FILE}"
-    with open(CASES_FILE, "r", encoding="utf-8") as f:
+    with open(CASES_FILE, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     cases = data.get("cases", [])
     return cases

@@ -75,7 +75,7 @@ async def test_get_source_success():
     mock_source.publish_date = datetime.date(2023, 5, 1)
     mock_source.description = "B2B PLG strategies."
     mock_source.is_active = True
-    mock_source.ingested_at = datetime.datetime.now(datetime.timezone.utc)
+    mock_source.ingested_at = datetime.datetime.now(datetime.UTC)
 
     mock_db = AsyncMock()
     # First call for source
@@ -112,7 +112,7 @@ async def test_get_ingestion_status_endpoint():
     mock_result = MagicMock()
     mock_result.first.return_value = (
         "abc1234",
-        datetime.datetime(2026, 10, 9, 12, 0, 0, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2026, 10, 9, 12, 0, 0, tzinfo=datetime.UTC),
     )
     mock_db.execute.return_value = mock_result
 

@@ -84,6 +84,7 @@ const GenerateRequestSchema = z.object({
       supports: z.string().optional(),
     })
   ).default([]),
+  system_prompt: z.string().optional(),
   product_context: z.string().nullable().optional(),
   output_contract_version: z.string().default("1.0"),
 });
@@ -141,7 +142,7 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
           .join("\n\n")
       : "No transcript evidence provided.";
 
-    const systemPrompt = `You are the Lenny Growth Assistant (Kestrel), an evidence-grounded AI assistant.
+    const fallbackSystemPrompt = `You are the Lenny Growth Assistant (Kestrel), an evidence-grounded AI assistant.
 Your answers must rely strictly on the provided transcript evidence.
 Cite evidence using exact tags such as [E1], [E2].
 Never fabricate facts or cite evidence not present in the provided list.
@@ -157,6 +158,8 @@ Schema:
 
 TRANSCRIPT EVIDENCE:
 ${evidenceText}`;
+
+    const systemPrompt = payload.system_prompt || fallbackSystemPrompt;
 
     // Construct Pi AI Context Messages
     const piMessages: Message[] = [];

@@ -65,7 +65,7 @@ def parse_date(value: Any) -> datetime.date | None:
             try:
                 return (
                     datetime.datetime.strptime(value_str, fmt)
-                    .replace(tzinfo=datetime.timezone.utc)
+                    .replace(tzinfo=datetime.UTC)
                     .date()
                 )
             except ValueError:

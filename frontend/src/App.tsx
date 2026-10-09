@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   AppView,
   ArtifactData,
-  ComposeMode,
   ArtifactKind,
+  Citation,
+  ComposeMode,
   ComposingStep,
+  GrowthBriefData,
   ManuscriptEntry,
   ProviderConfig,
   ProviderId,
@@ -66,6 +68,7 @@ export const App: React.FC = () => {
   // Modals & Panels
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const [isBriefOpen, setIsBriefOpen] = useState(false);
+  const [activeBrief, setActiveBrief] = useState<GrowthBriefData | null>(INITIAL_GROWTH_BRIEF);
   const [isPlateOpen, setIsPlateOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
 
@@ -329,7 +332,7 @@ export const App: React.FC = () => {
     [activeProvider, providers, showToast, announce]
   );
 
-  // Run Composing Pipeline
+  // Run Composing Pipeline via live Server-Sent Events stream
   const runComposingPipeline = useCallback(
     (session: SessionData, text: string, mode: ComposeMode, format: ArtifactKind) => {
       setIsComposing(true);
@@ -343,35 +346,172 @@ export const App: React.FC = () => {
       setComposingSteps(initialSteps);
       announce(stageDefs[0][0]);
 
-      let stepIndex = 0;
-      const stepDuration = 600;
-
-      const advance = () => {
-        stepIndex++;
-        if (stepIndex >= stageDefs.length) {
-          setComposingSteps((prev) =>
-            prev.map((step) => ({ ...step, status: 'done' }))
-          );
-          composeTimerRef.current = setTimeout(() => {
-            setIsComposing(false);
-            deliverResult(session, text, mode, format);
-          }, 350);
-          return;
-        }
-
-        setComposingSteps((prev) =>
-          prev.map((step, idx) => ({
-            ...step,
-            status: idx < stepIndex ? 'done' : idx === stepIndex ? 'run' : 'wait',
-          }))
-        );
-        announce(stageDefs[stepIndex][0]);
-        composeTimerRef.current = setTimeout(advance, stepDuration);
+      const stageMap: Record<string, number> = {
+        loading_context: 0,
+        retrieving: 1,
+        drafting: 2,
+        validating: 3,
+        saving: 4,
       };
 
-      composeTimerRef.current = setTimeout(advance, stepDuration);
+      api.streamMessage(
+        session.id,
+        {
+          content: text,
+          mode,
+          provider: activeProvider,
+          product_context: null,
+        },
+        {
+          onStage: (stage, label) => {
+            const activeIdx = stageMap[stage] ?? 0;
+            setComposingSteps((prev) =>
+              prev.map((step, idx) => ({
+                ...step,
+                status: idx < activeIdx ? 'done' : idx === activeIdx ? 'run' : 'wait',
+              }))
+            );
+            announce(label || stage);
+          },
+          onComplete: async (data) => {
+            setComposingSteps((prev) => prev.map((s) => ({ ...s, status: 'done' })));
+
+            setTimeout(async () => {
+              setIsComposing(false);
+
+              // Map real evidence citations
+              const citations: Citation[] = (data.citations || []).map((c, idx) => ({
+                id: `sn-${session.id}-${c.evidence_id}`,
+                refIndex: idx + 1,
+                speaker: c.guest || 'Lenny Guest',
+                episodeTitle: c.episode_title,
+                episodeUrl: c.episode_url || undefined,
+                quote: c.excerpt, // SPEC §5.6: read from stored chunk
+                provenanceStamp: `[${c.evidence_id}] ${c.supports || 'Evidence'}`,
+                chunkId: c.chunk_id,
+              }));
+
+              if (data.insufficient_evidence) {
+                const insufficientEntry: ManuscriptEntry = {
+                  id: data.message.id || 'insuf-' + Date.now(),
+                  kind: 'insufficient',
+                  noticeData: {
+                    kick: 'Insufficient Evidence in Transcript Corpus',
+                    paragraphs: [
+                      data.message.content ||
+                        'The podcast transcript corpus does not contain sufficient verified evidence to support this claim.',
+                    ],
+                    action: {
+                      label: 'Refine Query →',
+                      actionKey: 'retry',
+                    },
+                    stamp: `${data.message.model_id || activeProvider} · insufficient evidence`,
+                  },
+                  citations,
+                  createdAt: new Date().toISOString(),
+                };
+                setSessions((prev) =>
+                  prev.map((s) =>
+                    s.id === session.id
+                      ? { ...s, entries: [...s.entries, insufficientEntry] }
+                      : s
+                  )
+                );
+                showToast('Insufficient evidence in corpus');
+                return;
+              }
+
+              // Handle Growth Brief deliverable
+              if (data.growth_brief_id) {
+                const briefData = await api.getGrowthBrief(data.growth_brief_id);
+                if (briefData) {
+                  setSessions((prev) =>
+                    prev.map((s) =>
+                      s.id === session.id
+                        ? { ...s, activeBrief: briefData, briefCount: s.briefCount + 1 }
+                        : s
+                    )
+                  );
+                  setActiveBrief(briefData);
+                  setIsBriefOpen(true);
+                }
+              }
+
+              // Handle Artifact deliverable
+              if (data.artifact_id) {
+                const artifactData = await api.getArtifact(data.artifact_id);
+                if (artifactData) {
+                  setSessions((prev) =>
+                    prev.map((s) =>
+                      s.id === session.id
+                        ? { ...s, artifacts: [...s.artifacts, artifactData] }
+                        : s
+                    )
+                  );
+                  setActiveArtifact(artifactData);
+                  setIsPlateOpen(true);
+                }
+              }
+
+              // Bind real Answer Entry
+              const answerEntry: ManuscriptEntry = {
+                id: data.message.id || 'ans-' + Date.now(),
+                kind: 'answer',
+                answerData: {
+                  lead: data.message.content.split('\n\n')[0] || data.message.content,
+                  sections: [
+                    {
+                      rn: 'I',
+                      h:
+                        mode === 'growth_brief'
+                          ? 'Growth Brief Summary'
+                          : mode === 'essay'
+                          ? 'Digital Essay'
+                          : 'Synthesized Evidence',
+                      bodyHtml: data.message.content,
+                      citedRefIndices: citations.map((c) => c.refIndex),
+                    },
+                  ],
+                  stamp: `Set in ${data.message.model_id || activeProvider} · ${data.message.provider || activeProvider} — ${citations.length} citations verified`,
+                },
+                citations,
+                createdAt: data.message.created_at || new Date().toISOString(),
+              };
+
+              setSessions((prev) =>
+                prev.map((s) =>
+                  s.id === session.id
+                    ? {
+                        ...s,
+                        entries: [...s.entries, answerEntry],
+                        meta: `query · ${citations.length} notes`,
+                        noteSeq: s.noteSeq + citations.length,
+                      }
+                    : s
+                )
+              );
+
+              announce(
+                `Entry bound — ${citations.length} citations verified in the margin.`
+              );
+              showToast(`Entry bound — ${citations.length} citations verified`);
+              setTimeout(() => {
+                window.scrollTo({
+                  top: document.body.scrollHeight,
+                  behavior: 'smooth',
+                });
+              }, 100);
+            }, 300);
+          },
+          onError: (err) => {
+            console.warn('SSE message stream fallback:', err);
+            deliverResult(session, text, mode, format);
+            setIsComposing(false);
+          },
+        }
+      );
     },
-    [announce, deliverResult]
+    [activeProvider, announce, deliverResult, showToast]
   );
 
   const handleStrikeRun = useCallback(() => {
@@ -729,7 +869,7 @@ export const App: React.FC = () => {
       <GrowthBriefModal
         isOpen={isBriefOpen}
         onClose={() => setIsBriefOpen(false)}
-        brief={INITIAL_GROWTH_BRIEF}
+        brief={activeBrief || INITIAL_GROWTH_BRIEF}
         onSaveImpression={() => {
           showToast('Second impression bound');
           announce('Brief saved — second impression.');

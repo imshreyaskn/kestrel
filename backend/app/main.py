@@ -8,8 +8,10 @@ import time
 import uuid
 
 from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.api.v1 import api_v1_router
 from backend.app.core.config import settings
@@ -90,10 +92,6 @@ async def request_id_and_timing_middleware(request: Request, call_next):
 
 
 # Standardized Exception Handlers (IMPLEMENTATION_SPEC §6.1)
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
-
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     req_id = getattr(request.state, "request_id", str(uuid.uuid4()))

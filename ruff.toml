@@ -1,0 +1,10 @@
+line-length = 88
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "BLE"]
+ignore = [
+    "B008",   # Standard FastAPI idiom: Depends() and Query() in function defaults
+    "E501",   # Line-length checks in comments, fixtures, and raw payloads
+    "UP047",  # TypeVar vs PEP 695 type parameters compatibility
+]

@@ -109,7 +109,7 @@ def extract_json_payload(text: str) -> str:
     # Return the first candidate that parses as valid JSON
     for cand in candidates:
         try:
-            json.loads(cand)
+            json.loads(cand, strict=False)
             return cand
         except (json.JSONDecodeError, TypeError):
             continue
@@ -129,7 +129,7 @@ def extract_and_validate(text: str, schema: type[T]) -> T:
     """
     raw_json = extract_json_payload(text)
     try:
-        data = json.loads(raw_json)
+        data = json.loads(raw_json, strict=False)
     except json.JSONDecodeError as e:
         raise StructuredExtractionError(
             f"Extracted payload is not valid JSON: {e}\nPayload: {raw_json[:200]}"

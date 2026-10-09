@@ -180,7 +180,7 @@ class TranscriptIndexer:
 
         # Transactional update
         async with session.begin_nested():
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = datetime.datetime.now(datetime.UTC)
             if existing_source:
                 # Update existing source metadata
                 existing_source.title = parsed.title
