@@ -1,4 +1,4 @@
-# Start Here — The Lenny Growth Assistant
+# Start Here — The Lenny Growth Assistant (Codename: Kestrel)
 
 This pack is the implementation baseline for Google Antigravity. It is deliberately written as a specification and gated execution plan, not as permission to generate a huge unverified code dump.
 
@@ -11,15 +11,13 @@ This pack is the implementation baseline for Google Antigravity. It is deliberat
 
 ## How to start in Antigravity
 
-1. Create/open a clean repository named `lenny-growth-assistant`.
-2. Copy the contents of this pack into the repository root, preserving `.agents/` and `runtime-skills/` paths.
-3. Open the workspace in Antigravity and verify that the root `AGENTS.md` and `.agents/skills/verification-gates/SKILL.md` are discoverable. Antigravity documents workspace `AGENTS.md` and `.agents/skills` support; use skills instead of legacy workflows.
-4. Paste the prompt below into the Agent panel.
-5. Keep autonomy supervised. Review architecture decisions and diffs at every phase boundary. Do not ask the agent to build the whole application in one unreviewed pass.
+1. Open the repository `kestrel` (`https://github.com/imshreyaskn/kestrel.git`).
+2. Verify that the root `AGENTS.md`, `IMPLEMENTATION_SPEC.md`, and `.agents/skills/verification-gates/SKILL.md` are discoverable.
+3. Keep autonomy supervised. Review architecture decisions and diffs at every phase boundary. Do not ask the agent to build the whole application in one unreviewed pass.
 
 ## First prompt to paste into Antigravity
 
-> Read `AGENTS.md`, `IMPLEMENTATION_SPEC.md`, and `.agents/skills/verification-gates/SKILL.md` completely. Treat `IMPLEMENTATION_SPEC.md` as the single source of truth for requirements. Do not start by generating the entire app. First inspect the workspace and produce a concise implementation plan, requirements traceability matrix, risk register, and proposed repository tree. Then execute Phase 0 only: verify runtime versions/tooling; read the current official documentation for the selected agent SDK and Ollama; build a minimal compatibility spike proving local Ollama text generation, cloud-provider generation, structured output, tool/function-call behavior if required, streaming/cancellation behavior, and clean error handling. Do not fabricate test results. Based on the spike, record an ADR and lock the agent architecture. Default to the Pi Coding Agent SDK gateway if the Claude Agent SDK + Ollama path does not pass every required smoke test within 45 minutes. Do not leave two competing implementations. Stop after Phase 0 and show me the evidence, changed files, commands run, test output, and the next phase plan. Do not ask me questions whose answers are already in the spec.
+> Read `AGENTS.md`, `IMPLEMENTATION_SPEC.md`, and `.agents/skills/verification-gates/SKILL.md` completely. Treat `IMPLEMENTATION_SPEC.md` as the single source of truth for requirements. Do not start by generating the entire app. First inspect the workspace and produce a concise implementation plan, requirements traceability matrix, risk register, and proposed repository tree. Then execute Phase 0 only: verify runtime versions/tooling; read current official documentation for Claude Agent SDK in Python and Ollama; build a minimal compatibility spike proving local Ollama text generation, cloud-provider generation, structured output, tool/function-call behavior if required, streaming/cancellation behavior, and clean error handling inside a pure Python FastAPI backend. Record an ADR confirming the unified Python architecture and lock the agent runtime. Stop after Phase 0 and show the evidence, changed files, commands run, test output, and the next phase plan.
 
 ## Subsequent implementation prompts
 

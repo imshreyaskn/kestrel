@@ -1,4 +1,4 @@
-# The Lenny Growth Assistant — Full Implementation Specification
+# The Lenny Growth Assistant (Codename: Kestrel) — Full Implementation Specification
 
 **Version:** 1.0 implementation baseline  
 **Date:** 9 October 2026  
@@ -142,16 +142,14 @@ Scope boundaries are not permission to skip mandatory requirements. Expand imple
 - Full-text search via PostgreSQL `tsvector` and semantic retrieval via pgvector; combine candidates in the application.
 
 **Agent runtime**
-- Start with **Pi Coding Agent SDK in a small TypeScript/Node gateway**, using its documented configurable OpenAI-compatible endpoint for Ollama and the built-in Anthropic provider for cloud inference.
-- Keep the gateway thin: no application database ownership, no independent authoritative chat history, no business permissions, no general-purpose shell/filesystem tools.
-- The gateway accepts a typed generation request and returns a typed result plus status/stream events. FastAPI owns session access, retrieval, citation validation, persistence, and final error semantics.
-- Pi SDK sessions may be ephemeral per run. Pass only the current authorized session's bounded conversation context. PostgreSQL remains authoritative.
-
-**Why this default:** current Pi documentation describes in-process TypeScript SDK integration and configuration of compatible Ollama endpoints, alongside its provider/model configuration. Claude Agent SDK officially runs the Claude Code agent harness; an open issue dated 31 July 2026 reports certain Ollama models outputting tool calls as text instead of structured tool blocks through the SDK/CLI. That report does not prove every combination fails, but it makes the Python-only path a risk to validate rather than assume.
-
-**Time-boxed simplification test:** During Phase 0 only, it is acceptable to test Claude Agent SDK in Python against the chosen Ollama model. Switch to a single-process Python implementation only if, within 45 minutes, it passes all required checks: local response, correct structured result, any required tool call, clean cloud-provider call, per-request provider isolation, cancellation/timeout handling, and no unsafe mutation of process-global environment in concurrent requests. Record evidence in an ADR. If it does not pass, use the Pi gateway and stop revisiting the choice. Do not build both production paths.
-
-**No multiple autonomous agents.** Use one agent runtime, explicit app workflows, narrowly scoped skills, and deterministic FastAPI orchestration. This is easier to test and is enough to satisfy the required agent integration.
+- Standardized on **Claude Agent SDK in pure Python**, running in-process within the FastAPI backend service (`backend/app/agent/`).
+- Direct integration: no auxiliary Node.js/TypeScript gateway service, no inter-process network hops, and no secondary container.
+- Provider abstraction:
+  - **Local mode**: Ollama via its host endpoint (`http://host.docker.internal:11434`), supporting local models (e.g. `qwen3:4b`, `llama3.2`).
+  - **Cloud mode**: Anthropic API (`claude-sonnet-latest` / Claude 3.7).
+- FastAPI retains authoritative ownership of session identity, PostgreSQL persistence, retrieval execution, citation validation, and security boundaries. The agent runtime is invoked with bounded, typed context and outputs validated structures.
+- Bounded context: Pass only the authorized session's recent context window and retrieved evidence chunks (`[E1]`, `[E2]`). PostgreSQL remains the sole source of truth.
+- **Single runtime architecture**: Locked via ADR 001. No multi-agent swarms, no Redis, no competing SDK runtimes.
 
 ### 3.2 Model configuration
 
@@ -169,7 +167,6 @@ APP_ENV=development
 APP_LOG_LEVEL=INFO
 APP_BASE_URL=http://localhost:5173
 API_PORT=8000
-AGENT_GATEWAY_PORT=8010
 DATABASE_URL=postgresql+asyncpg://lenny:lenny_dev_only@db:5432/lenny_growth
 DEMO_USER_ID=00000000-0000-4000-8000-000000000001
 OLLAMA_BASE_URL=http://host.docker.internal:11434
@@ -179,8 +176,6 @@ EMBEDDING_DIMENSIONS=768
 DEFAULT_PROVIDER=local
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=claude-sonnet-latest
-AGENT_GATEWAY_URL=http://agent-gateway:8010
-INTERNAL_SERVICE_TOKEN=replace-with-a-local-random-value
 RETRIEVAL_TOP_K=8
 RETRIEVAL_MIN_SCORE=0.25
 MAX_CONTEXT_MESSAGES=12
@@ -211,7 +206,7 @@ flowchart TD
   API --> DB[(PostgreSQL + pgvector)]
   API --> RET[Hybrid Retrieval Service]
   RET --> DB
-  API -->|typed generation request| AG[Pi Agent Gateway]
+  API --> AG[In-Process Claude Agent Runtime]
   AG --> LOCAL[Ollama on host]
   AG --> CLOUD[Anthropic API]
   API --> VALID[Output + citation validation]
@@ -229,7 +224,7 @@ flowchart TD
 Use a clean monorepo:
 
 ```text
-lenny-growth-assistant/
+kestrel/
 ├── frontend/
 │   ├── src/
 │   │   ├── app/                 # routes, layout, providers
@@ -256,22 +251,12 @@ lenny-growth-assistant/
 │   │   ├── services/              # session, message, brief, artifact, provider
 │   │   ├── retrieval/             # embeddings, keyword, vector, ranking
 │   │   ├── ingestion/             # sync, parse, chunk, index
-│   │   ├── agent_client/          # typed gateway client, skill loader, prompts
+│   │   ├── agent/                 # Claude Agent SDK runtime, providers, skills
 │   │   └── security/              # artifact preview policy and validators
 │   ├── migrations/
 │   ├── tests/unit/
 │   ├── tests/integration/
 │   └── pyproject.toml
-├── agent-gateway/
-│   ├── src/server.ts
-│   ├── src/config.ts
-│   ├── src/schemas.ts
-│   ├── src/runtime/pi-runtime.ts
-│   ├── src/providers.ts
-│   ├── src/skills.ts
-│   ├── src/logging.ts
-│   ├── tests/
-│   └── package.json
 ├── runtime-skills/
 │   └── ship-30-for-30/SKILL.md
 ├── scripts/
@@ -527,11 +512,11 @@ The UI shows a visible “working” state and stage changes. Do not show a mode
 
 A browser disconnect should request cancellation where supported. If cancellation propagation from frontend through FastAPI to the agent cannot be reliably implemented within the available time, retain safe server-side timeout and mark the cancellation limitation in docs rather than claiming true cancellation.
 
-### 6.6 Internal gateway contract
+### 6.6 In-process agent runtime contract (Python Claude Agent SDK)
 
-Only the FastAPI service may call the agent gateway. It is not published to the host. Require a shared internal token and enforce request size/time limits.
+The agent runtime executes directly in-process within FastAPI (`backend/app/agent/`). There is no network overhead, no separate microservice port, and no auxiliary authorization token.
 
-Request fields:
+Input parameters to the agent invocation:
 
 - `request_id`, `session_id`, `mode`, `provider`;
 - `model_id` from server allowlist;
@@ -541,9 +526,13 @@ Request fields:
 - optional typed Growth Brief/product context;
 - output contract version.
 
-The gateway must not accept arbitrary shell paths, tool names, provider URLs, or API keys. Disable Pi default tools. Register only the minimal custom tools actually needed; transcript search is read-only. Initial retrieval is deterministic in FastAPI so that the product can answer even if a small local model does not autonomously choose a retrieval tool. The gateway can optionally request a second search through a constrained internal function if this has been tested.
+Security and sandboxing:
+- The agent execution harness must NOT have arbitrary shell paths, filesystem access, or external web browsing tools.
+- Only registered, read-only tools are allowed (e.g. focused transcript retrieval refinement).
+- Initial retrieval is performed deterministically in FastAPI before invoking the agent, ensuring small local models succeed even without multi-turn tool calling.
 
-Response fields include request ID, provider/model used, final structured response, safe usage/latency metadata, and a normalized error category. Never return provider secrets or raw stack traces.
+Output fields include:
+- `request_id`, provider/model used, final structured response matching the workflow mode schema, latency/token usage metadata, and standardized error envelopes. Never leak credentials or raw stack traces.
 
 ---
 
@@ -897,7 +886,7 @@ Use a test PostgreSQL/pgvector instance or CI service. SQLite is not an adequate
 - DB outage/failure cannot return success-shaped completed messages;
 - artifact and Growth Brief ownership checks.
 
-### 12.3 Gateway tests
+### 12.3 In-process agent runtime tests (Python)
 
 - Model/provider allowlist.
 - Ollama base URL and cloud provider configuration.
@@ -968,13 +957,12 @@ Record actual pass/fail/blocker, not only the planned outcome.
 ### 13.1 Docker topology
 
 - `db`: PostgreSQL + pgvector image, persistent named volume, health check.
-- `api`: FastAPI, internal `DATABASE_URL`, internal gateway URL; migrate on controlled startup.
-- `agent-gateway`: Node/Bun runtime using Pi SDK; internal Docker network only, no host-published port.
-- `frontend`: production build served by Nginx or equivalent, proxy `/api` to FastAPI and disable proxy buffering for SSE. Publish only to loopback by default (`127.0.0.1:5173:80`).
+- `api`: FastAPI (Python 3.12+), internal `DATABASE_URL`, in-process Claude Agent SDK runtime; runs migrations and serves `/api/v1`.
+- `frontend`: production build served by Nginx or Vite preview, proxy `/api` to FastAPI and disable proxy buffering for SSE. Publish only to loopback by default (`127.0.0.1:5173:80`).
 - Ollama runs on the host OS for easiest GPU access. Container services address it as `host.docker.internal:11434`; add `host-gateway` mapping where required (especially Linux). Document Windows/Docker Desktop behavior.
 - No Redis or separate vector database.
 
-Don't publish PostgreSQL or agent-gateway ports by default. A dev-only compose profile can expose local DB if debugging needs it.
+Don't publish PostgreSQL port by default. A dev-only compose profile can expose local DB if external debugging needs it.
 
 ### 13.2 Expected user setup
 
@@ -1090,7 +1078,7 @@ The deadline is close; parallelize isolated implementation with Antigravity, but
 - typed settings, error envelope, correlation IDs and JSON logs;
 - PostgreSQL/pgvector Compose service, Alembic first migration, seed demo user;
 - FastAPI health/config endpoints;
-- Pi gateway health and typed request/response contract;
+- in-process agent runtime module scaffolding and typed request/response schemas;
 - frontend shell and design tokens;
 - CI/basic checks.
 

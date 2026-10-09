@@ -1,4 +1,4 @@
-# Persistent Engineering Rules — Lenny Growth Assistant
+# Persistent Engineering Rules — Lenny Growth Assistant (Codename: Kestrel)
 
 ## Source of truth
 - Read `IMPLEMENTATION_SPEC.md` before making architectural or product decisions.
