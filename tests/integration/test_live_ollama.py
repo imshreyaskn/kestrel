@@ -16,7 +16,7 @@ def is_ollama_available() -> bool:
     try:
         r = httpx.get(f"{OLLAMA_HOST}/api/version", timeout=2.0)
         return r.status_code == 200
-    except Exception:
+    except httpx.HTTPError:
         return False
 
 

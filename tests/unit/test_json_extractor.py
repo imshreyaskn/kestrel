@@ -3,25 +3,24 @@ Unit tests for robust JSON extraction from LLM outputs.
 Tests real-world model outputs: reasoning tags, code fences, prose preambles, and failure modes.
 """
 
-from typing import List, Optional
+
 import pytest
 from pydantic import BaseModel, Field
 
 from backend.app.core.json_extractor import (
     StructuredExtractionError,
     extract_and_validate,
-    extract_json_payload,
 )
 
 
 class CitationRef(BaseModel):
     evidence_id: str
-    supports: Optional[str] = None
+    supports: str | None = None
 
 
 class SampleResearchResponse(BaseModel):
     answer_markdown: str
-    citations: List[CitationRef] = Field(default_factory=list)
+    citations: list[CitationRef] = Field(default_factory=list)
     insufficient_evidence: bool = False
 
 

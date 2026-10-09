@@ -16,7 +16,7 @@ def is_gateway_running() -> bool:
     try:
         r = httpx.get(f"{GATEWAY_URL}/health", timeout=2.0)
         return r.status_code == 200
-    except Exception:
+    except httpx.HTTPError:
         return False
 
 

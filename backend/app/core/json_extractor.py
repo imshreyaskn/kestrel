@@ -9,7 +9,8 @@ Handles real-world model variances:
 
 import json
 import re
-from typing import Any, Dict, Optional, Type, TypeVar
+from typing import TypeVar
+
 from pydantic import BaseModel, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
@@ -17,7 +18,6 @@ T = TypeVar("T", bound=BaseModel)
 
 class StructuredExtractionError(ValueError):
     """Raised when structured JSON cannot be extracted from LLM text."""
-    pass
 
 
 def clean_llm_text(text: str) -> str:
@@ -29,7 +29,7 @@ def clean_llm_text(text: str) -> str:
     return cleaned.strip()
 
 
-def find_outermost_json_object(text: str) -> Optional[str]:
+def find_outermost_json_object(text: str) -> str | None:
     """Find the substring between the first '{' and its matching closing '}'."""
     start_idx = text.find("{")
     if start_idx == -1:
@@ -118,7 +118,7 @@ def extract_json_payload(text: str) -> str:
     return cleaned
 
 
-def extract_and_validate(text: str, schema: Type[T]) -> T:
+def extract_and_validate(text: str, schema: type[T]) -> T:
     """
     Extract JSON from LLM text and validate against a Pydantic schema.
     Raises StructuredExtractionError if extraction or validation fails.
