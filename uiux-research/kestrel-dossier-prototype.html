@@ -135,13 +135,15 @@ a{color:var(--accent-ink)}
 .rail-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 14px;width:282px}
 .rl-group{font:600 8.5px var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:0;padding:12px 10px 6px;opacity:0;transition:opacity .2s .05s;white-space:nowrap}
 .rail:hover .rl-group,.rail:focus-within .rl-group,.rail.open .rl-group{opacity:1}
-.rl-item{position:relative;display:grid;grid-template-columns:30px 1fr;gap:4px;width:262px;text-align:left;
-  padding:9px 10px;border-radius:9px;transition:background .15s}
+.rl-item{position:relative;display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:center;width:262px;text-align:left;
+  padding:7px 6px;border-radius:9px;transition:background .15s}
 .rl-item:hover{background:var(--surface)}
-.rl-item.active{background:var(--surface)}
-.rl-item.active::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;background:var(--accent);border-radius:2px}
-.rl-num{font:500 10px var(--f-mono);color:var(--muted-ink);letter-spacing:.05em;padding-top:3px}
-.rl-item.active .rl-num{color:var(--accent-ink);font-weight:600}
+.rl-item.active{background:transparent}
+.rl-num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font:500 10px/1 var(--f-mono);color:var(--muted-ink);letter-spacing:0;border:1.5px solid transparent;background:transparent;flex:none;
+  transition:border-color .18s,color .18s}
+.rl-item.active .rl-num{border-color:var(--accent);color:var(--accent-ink);background:transparent;font-weight:600}
+.rl-item.active .rl-t{font-weight:600}
 .rl-t{font:500 13px/1.35 var(--f-ui);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .2s .05s}
 .rl-m{font:500 8.5px var(--f-mono);color:var(--faint);letter-spacing:.06em;text-transform:uppercase;opacity:0;transition:opacity .2s .05s;white-space:nowrap}
 .rail:hover .rl-t,.rail:focus-within .rl-t,.rail.open .rl-t,
@@ -421,6 +423,21 @@ a{color:var(--accent-ink)}
 .scrim{position:fixed;inset:0;z-index:900;background:rgba(36,42,46,.26);opacity:0;pointer-events:none;transition:opacity .25s}
 .scrim.show{opacity:1;pointer-events:auto}
 
+/* states tray — discreet floating design reviewer control */
+.states-tray{position:fixed;bottom:14px;right:14px;z-index:2500}
+.states-btn{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);
+  box-shadow:var(--shadow);border-radius:999px;padding:6px 12px;font:600 9.5px var(--f-ui);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+.states-btn:hover{border-color:var(--accent);color:var(--accent-ink)}
+.states-menu{position:absolute;bottom:calc(100% + 8px);right:0;width:250px;background:var(--surface);
+  border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);padding:8px 6px;
+  display:none;flex-direction:column;gap:3px}
+.states-menu.open{display:flex}
+.states-menu .st-opt{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;
+  padding:7px 10px;border-radius:6px;font:500 11px var(--f-ui);color:var(--ink);transition:background .15s}
+.states-menu .st-opt:hover{background:var(--canvas);color:var(--accent-ink)}
+.states-menu .st-opt span{color:var(--faint);font:500 8.5px var(--f-mono)}
+
 /* =====================================================================
    RESPONSIVE — the margin folds into footnotes
    ===================================================================== */
@@ -440,7 +457,7 @@ a{color:var(--accent-ink)}
   .rail .rl-t,.rail .rl-m,.rail .rl-group,.rail .rail-new .rl-t{opacity:1}
   .rail-spine,.rail-protolabel{display:none}
   .rail-list,.rail-new{width:100%}
-  .rl-item{width:100%;grid-template-columns:28px 1fr}
+  .rl-item{width:100%;grid-template-columns:26px 1fr;gap:10px}
   .rhead-menu{display:grid}
   .rhead-brand small{display:none}
   .page{padding:86px 18px 60px}
@@ -751,6 +768,24 @@ a{color:var(--accent-ink)}
 </div>
 
 <div class="scrim" id="scrim"></div>
+<div class="states-tray" id="statesTray">
+  <button class="states-btn" id="statesBtn" aria-haspopup="dialog" aria-expanded="false" title="Preview key UI/UX states">
+    <svg class="icon ic12" aria-hidden="true"><use href="#i-diamond"/></svg>
+    <span>UI States Tray</span>
+  </button>
+  <div class="states-menu" id="statesMenu" role="dialog" aria-label="Quick State Switcher">
+    <button type="button" class="st-opt" data-st="hero">1. Frontmatter (New Dossier) <span>Landing</span></button>
+    <button type="button" class="st-opt" data-st="activation">2. Folio + Sidenotes + Leaders <span>Research</span></button>
+    <button type="button" class="st-opt" data-st="pricing">3. Pricing Page Folio <span>Entry ¶</span></button>
+    <button type="button" class="st-opt" data-st="brief">4. Growth Brief (The Fold) <span>Deliverable</span></button>
+    <button type="button" class="st-opt" data-st="plate-html">5. Sandboxed Plate (HTML) <span>Artifact</span></button>
+    <button type="button" class="st-opt" data-st="plate-md">6. Sandboxed Plate (MD) <span>Artifact</span></button>
+    <button type="button" class="st-opt" data-st="insufficient">7. Insufficient Evidence <span>Advisory</span></button>
+    <button type="button" class="st-opt" data-st="composing">8. Composing Step List <span>Working</span></button>
+    <button type="button" class="st-opt" data-st="empty">9. Blank Folio <span>Session</span></button>
+    <button type="button" class="st-opt" data-st="colophon">10. Colophon / Provider <span>Status</span></button>
+  </div>
+</div>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <div class="sr-only" role="status" aria-live="polite" id="live"></div>
 
@@ -1789,7 +1824,8 @@ function renderPv(){
    ===================================================================== */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape'){
-    if (colo.classList.contains('open')) closeColo();
+    if (statesMenu.classList.contains('open')) closeStatesTray();
+    else if (colo.classList.contains('open')) closeColo();
     else if ($('#pv').classList.contains('open')) closePv();
     else if ($('#fold').classList.contains('open')) closeFold();
     else closeRail();
@@ -1801,6 +1837,93 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); activeComposer().focus();
   }
 });
+
+/* =====================================================================
+   STATES TRAY — interactive review helper
+   ===================================================================== */
+const statesBtn = $('#statesBtn'), statesMenu = $('#statesMenu');
+function closeStatesTray(){ statesMenu.classList.remove('open'); statesBtn.setAttribute('aria-expanded', 'false'); }
+statesBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  statesMenu.classList.toggle('open');
+  statesBtn.setAttribute('aria-expanded', statesMenu.classList.contains('open'));
+});
+document.addEventListener('click', e => {
+  if (statesMenu.classList.contains('open') && !$('#statesTray').contains(e.target)) closeStatesTray();
+});
+$$('.st-opt').forEach(opt => opt.addEventListener('click', () => {
+  closeStatesTray();
+  const st = opt.dataset.st;
+  switch (st){
+    case 'hero':
+      newDossier();
+      toast('State: Frontmatter (New Dossier)');
+      break;
+    case 'activation':
+      closeFold(); closePv();
+      if (!threads['live-act']){
+        const id = 'live-act';
+        threads[id] = { id, num:'01', title:'Improving activation without hurting retention', meta:'query · 4 notes', noteSeq:0, plateSeq:0, entries:[], artifacts:[], brief:1, used:{ main:1 }, kind:'live' };
+        state.session = id; setView('manuscript'); renderRail(); setRheadTitle(threads[id].title); $('#endmark').hidden = false;
+        const q = makeQuery('How can an early-stage SaaS improve activation without hurting retention?', { modeLabel:'Query', ctx:true });
+        const { el, newIds } = buildResearchMain(threads[id]);
+        el.append(footEntry('Set in qwen2.5:3b · local — 4 citations verified', [
+          { label:'Bind to a growth brief →', fn:() => { threads[id].brief = Math.max(threads[id].brief, 1); openFold(); } },
+          { label:'Set as an essay →', fn:() => setMode('essay', 'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.') },
+        ]));
+        threads[id].entries = [q, el];
+        const entries = $('#entries'); entries.innerHTML = '';
+        entries.append(q, el);
+        requestAnimationFrame(() => { leaders.draw(newIds); scrollSheet(); });
+      } else {
+        openSession('live-act');
+      }
+      toast('State: Research Folio with 4 Citations & Leaders');
+      break;
+    case 'pricing':
+      closeFold(); closePv();
+      openSession('pricing');
+      toast('State: Pricing Folio');
+      break;
+    case 'brief':
+      closePv();
+      openFold();
+      toast('State: Growth Brief ("The Fold")');
+      break;
+    case 'plate-html':
+      closeFold();
+      openPlate('a1');
+      toast('State: Sandboxed HTML Plate Viewer');
+      break;
+    case 'plate-md':
+      closeFold();
+      openPlate('a2');
+      toast('State: Sandboxed Markdown Plate Viewer');
+      break;
+    case 'insufficient':
+      closeFold(); closePv();
+      ensureThread('PLG industry benchmark conversion rates');
+      deliver('insufficient');
+      toast('State: Insufficient Evidence Notice');
+      break;
+    case 'composing':
+      closeFold(); closePv();
+      newDossier();
+      fillComposer('How does Superhuman measure product-market fit delight?');
+      $('#fmForm').requestSubmit();
+      toast('State: Composing 4-Stage Step List');
+      break;
+    case 'empty':
+      closeFold(); closePv();
+      openSession('empty1');
+      toast('State: Blank Dossier Session');
+      break;
+    case 'colophon':
+      coloBtn.click();
+      toast('State: Colophon Provider Inspector');
+      break;
+  }
+}));
 
 /* =====================================================================
    INIT

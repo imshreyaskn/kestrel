@@ -6,6 +6,7 @@ from backend.app.models.entities import (
     MessageSource,
     TranscriptChunk,
     TranscriptSource,
+    User,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "MessageSource",
     "TranscriptChunk",
     "TranscriptSource",
+    "User",
 ]

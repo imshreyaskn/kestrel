@@ -14,3 +14,4 @@ This directory contains genuine, sanitized transcripts and decision records of t
 - `002-phase-0-gateway-and-sdk-evidence.md`: Live containerized Node 22 Pi Agent Gateway build, spike verification, and end-to-end integration with Host Ollama and Python backend.
 - `003-phase-0-pi-ai-sdk-realization.md`: Genuine Pi AI SDK integration (models.complete, Google & Ollama providers), pytest test suite standardization (13/13 passing), and Node 22 engine constraint documentation.
 - `004-phase-0-final-audit.md`: Formal adversarial audit verifying commits bea9670 and 2a8d04f, confirming Phase 0 is definitively complete and unblocking Phase 1.
+- `005-phase-1-foundation-evidence.md`: Phase 1 verification: Alembic migration 0002_add_users, single-user demo identity seed, Editorial Research Studio React + TypeScript build, and 20/20 passing test suite.

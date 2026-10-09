@@ -24,11 +24,32 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.db.base import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    sessions: Mapped[list["ChatSession"]] = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="New Chat")
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -41,6 +62,7 @@ class ChatSession(Base):
         onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
 
+    user: Mapped["User"] = relationship("User", back_populates="sessions")
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="session", cascade="all, delete-orphan")
     growth_briefs: Mapped[list["GrowthBrief"]] = relationship("GrowthBrief", back_populates="session", cascade="all, delete-orphan")
     artifacts: Mapped[list["Artifact"]] = relationship("Artifact", back_populates="session", cascade="all, delete-orphan")

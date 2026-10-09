@@ -23,6 +23,7 @@ from backend.app.models.entities import (
     MessageSource,
     TranscriptChunk,
     TranscriptSource,
+    User,
 )
 
 # Test-scoped session factory with NullPool to prevent asyncpg cross-event-loop connection reuse
@@ -115,7 +116,14 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
         )
         session.add_all([chunk1, chunk2])
 
-        # 3. Create ChatSession
+        # 3. Create User and ChatSession
+        test_user = User(
+            id=user_id,
+            email=f"user-{user_id}@kestrel.test",
+            full_name="Test Operator",
+        )
+        session.add(test_user)
+
         chat_session = ChatSession(
             id=session_id,
             user_id=user_id,
@@ -218,6 +226,7 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
         await session.execute(delete(MessageSource).where(MessageSource.message_id == msg_id))
         await session.execute(delete(Message).where(Message.id == msg_id))
         await session.execute(delete(ChatSession).where(ChatSession.id == session_id))
+        await session.execute(delete(User).where(User.id == user_id))
         await session.execute(delete(TranscriptChunk).where(TranscriptChunk.source_id == source_id))
         await session.execute(delete(TranscriptSource).where(TranscriptSource.id == source_id))
         await session.commit()
