@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import tarfile
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -87,27 +88,27 @@ def sync_transcripts_repo(
     # Strategy 2: Download tarball archive
     try:
         logger.info("Downloading transcript archive from %s", archive_url)
-        with httpx.Client(follow_redirects=True, timeout=60.0) as client:
-            resp = client.get(archive_url)
-            resp.raise_for_status()
+        with tempfile.TemporaryDirectory() as temp_dir_str:
+            temp_dir = Path(temp_dir_str)
+            archive_path = temp_dir / "transcripts_upstream.tar.gz"
 
-            # Save temporary tarball
-            archive_path = target_dir.parent / "transcripts_upstream.tar.gz"
-            archive_path.write_bytes(resp.content)
+            with httpx.Client(follow_redirects=True, timeout=60.0) as client:
+                resp = client.get(archive_url)
+                resp.raise_for_status()
+                archive_path.write_bytes(resp.content)
 
             with tarfile.open(archive_path, "r:gz") as tar:
-                # GitHub tarballs unpack into a top-level directory (e.g. lennys-podcast-transcripts-main/)
-                members = tar.getmembers()
-                prefix = members[0].name.split("/")[0] if members else ""
-                tar.extractall(path=target_dir.parent)
+                # PEP 706 safe tar extraction with 'data' filter in Python 3.12+
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(path=temp_dir, filter="data")
+                else:
+                    tar.extractall(path=temp_dir)
 
-            if archive_path.exists():
-                archive_path.unlink()
-
-            extracted_dir = target_dir.parent / prefix
-            if extracted_dir.exists() and extracted_dir != target_dir:
-                # Copy or move files into target_dir
-                for item in extracted_dir.iterdir():
+            # GitHub tarballs unpack into a single top-level directory (e.g. lennys-podcast-transcripts-main/)
+            extracted_subdirs = [d for d in temp_dir.iterdir() if d.is_dir()]
+            if extracted_subdirs:
+                source_dir = extracted_subdirs[0]
+                for item in source_dir.iterdir():
                     dest = target_dir / item.name
                     if dest.exists():
                         if dest.is_dir():
@@ -115,7 +116,6 @@ def sync_transcripts_repo(
                         else:
                             dest.unlink()
                     shutil.move(str(item), str(target_dir))
-                shutil.rmtree(extracted_dir, ignore_errors=True)
 
         return "archive-main"
     except (httpx.HTTPError, tarfile.TarError, OSError) as e:

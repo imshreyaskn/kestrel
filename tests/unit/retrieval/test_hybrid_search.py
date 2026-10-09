@@ -1,11 +1,21 @@
 """
-Unit tests for Hybrid Search RRF Fusion logic.
-Tests ranking fusion, source diversity constraint, and evidence labeling.
+Unit tests for Hybrid Search RRF Fusion logic and HybridRetrievalService.
+Tests ranking fusion, source diversity constraint, evidence labeling,
+and end-to-end service query execution with score filtering and insufficient evidence detection.
 """
 
-import uuid
+from __future__ import annotations
 
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
+
+from backend.app.retrieval.embedder import DeterministicFakeEmbeddingProvider
 from backend.app.retrieval.hybrid_search import (
+    HybridRetrievalService,
+    RetrievalResult,
     RetrievedCandidate,
     compute_rrf_fusion,
 )
@@ -37,7 +47,7 @@ def create_candidate(
     )
 
 
-def test_rrf_fusion_boosts_dual_match():
+def test_rrf_fusion_boosts_dual_match() -> None:
     chunk_a = uuid.uuid4()
     chunk_b = uuid.uuid4()
     chunk_c = uuid.uuid4()
@@ -65,7 +75,7 @@ def test_rrf_fusion_boosts_dual_match():
     assert fused[0].sparse_rank == 1
 
 
-def test_rrf_fusion_source_diversity():
+def test_rrf_fusion_source_diversity() -> None:
     src_dominant = uuid.uuid4()
     src_other = uuid.uuid4()
 
@@ -107,3 +117,145 @@ def test_evidence_item_to_citation_dict() -> None:
     assert citation["episode_title"] == "Test Episode"
     assert citation["supports"] == "Key PMF metric"
     assert citation["excerpt"] == f"Content for chunk {chunk_id}"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_service_search_execution() -> None:
+    """Verify HybridRetrievalService executes dense and sparse searches and fuses results."""
+    embedder = DeterministicFakeEmbeddingProvider()
+    service = HybridRetrievalService(embedder=embedder, min_dense_score=0.25)
+
+    chunk_id = uuid.uuid4()
+    source_id = uuid.uuid4()
+
+    mock_dense_row = {
+        "chunk_id": chunk_id,
+        "source_id": source_id,
+        "source_key": "episodes/elena-verna/transcript.md",
+        "chunk_index": 0,
+        "content": "Elena Verna discusses B2B freemium metrics and product-led loops.",
+        "token_count": 120,
+        "char_start": 0,
+        "char_end": 120,
+        "episode_title": "Elena Verna on PLG",
+        "guest": "Elena Verna",
+        "episode_url": "https://youtube.com/watch?v=elena",
+        "publish_date": "2023-05-01",
+        "score": 0.82,
+    }
+
+    mock_sparse_row = {
+        "chunk_id": chunk_id,
+        "source_id": source_id,
+        "source_key": "episodes/elena-verna/transcript.md",
+        "chunk_index": 0,
+        "content": "Elena Verna discusses B2B freemium metrics and product-led loops.",
+        "token_count": 120,
+        "char_start": 0,
+        "char_end": 120,
+        "episode_title": "Elena Verna on PLG",
+        "guest": "Elena Verna",
+        "episode_url": "https://youtube.com/watch?v=elena",
+        "publish_date": "2023-05-01",
+        "score": 0.65,
+    }
+
+    mock_session = AsyncMock()
+    dense_res = MagicMock()
+    dense_res.mappings.return_value.all.return_value = [mock_dense_row]
+    sparse_res = MagicMock()
+    sparse_res.mappings.return_value.all.return_value = [mock_sparse_row]
+
+    mock_session.execute.side_effect = [dense_res, sparse_res]
+
+    result = await service.search(mock_session, "freemium product-led growth", top_k=5)
+
+    assert isinstance(result, RetrievalResult)
+    assert not result.insufficient_evidence
+    assert len(result) == 1
+    assert result.top_score > 0
+    assert result.top_dense_score == 0.82
+    assert result[0].evidence_id == "E1"
+    assert result[0].guest == "Elena Verna"
+    # Verify iterable behavior
+    items = [item for item in result]
+    assert len(items) == 1
+    assert mock_session.execute.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_service_empty_query() -> None:
+    """Empty query should return immediately with insufficient_evidence=True without hitting DB."""
+    embedder = DeterministicFakeEmbeddingProvider()
+    service = HybridRetrievalService(embedder=embedder)
+
+    mock_session = AsyncMock()
+    result = await service.search(mock_session, "   ")
+
+    assert result.insufficient_evidence is True
+    assert len(result) == 0
+    assert mock_session.execute.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_service_unsupported_query_triggers_insufficient_evidence() -> (
+    None
+):
+    """When both dense (below min_dense_score) and sparse queries return 0 rows, insufficient_evidence is True."""
+    embedder = DeterministicFakeEmbeddingProvider()
+    service = HybridRetrievalService(embedder=embedder, min_dense_score=0.25)
+
+    mock_session = AsyncMock()
+    empty_dense = MagicMock()
+    empty_dense.mappings.return_value.all.return_value = []
+    empty_sparse = MagicMock()
+    empty_sparse.mappings.return_value.all.return_value = []
+
+    mock_session.execute.side_effect = [empty_dense, empty_sparse]
+
+    result = await service.search(
+        mock_session, "Quantum Shor factoring algorithm", top_k=5
+    )
+
+    assert result.insufficient_evidence is True
+    assert len(result) == 0
+    assert result.top_score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_service_sparse_error_degradation() -> None:
+    """If PostgreSQL throws an error during sparse full-text search, service gracefully uses dense candidates."""
+    embedder = DeterministicFakeEmbeddingProvider()
+    service = HybridRetrievalService(embedder=embedder)
+
+    mock_dense_row = {
+        "chunk_id": uuid.uuid4(),
+        "source_id": uuid.uuid4(),
+        "source_key": "episodes/adam-fishman/transcript.md",
+        "chunk_index": 0,
+        "content": "Onboarding is the only part of your product that 100% of people touch.",
+        "token_count": 80,
+        "char_start": 0,
+        "char_end": 80,
+        "episode_title": "Adam Fishman on Growth Teams",
+        "guest": "Adam Fishman",
+        "episode_url": "https://youtube.com/watch?v=adam",
+        "publish_date": "2022-10-13",
+        "score": 0.78,
+    }
+
+    mock_session = AsyncMock()
+    dense_res = MagicMock()
+    dense_res.mappings.return_value.all.return_value = [mock_dense_row]
+
+    # First call succeeds for dense, second call raises SQLAlchemyError for sparse
+    mock_session.execute.side_effect = [
+        dense_res,
+        SQLAlchemyError("tsquery syntax error"),
+    ]
+
+    result = await service.search(mock_session, "onboarding 100%", top_k=3)
+
+    assert not result.insufficient_evidence
+    assert len(result) == 1
+    assert result[0].guest == "Adam Fishman"

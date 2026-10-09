@@ -94,6 +94,33 @@ async def run_stats() -> None:
         print(json.dumps(data, indent=2))
 
 
+async def run_benchmark_cli(
+    eval_file: Path,
+    use_fake: bool = False,
+    top_k: int = 5,
+) -> None:
+    """Run retrieval benchmark suite from evaluation YAML."""
+    from backend.app.retrieval.benchmark import run_retrieval_benchmark
+    from backend.app.retrieval.hybrid_search import HybridRetrievalService
+
+    embedder = get_embedding_provider(use_fake=use_fake)
+    service = HybridRetrievalService(embedder=embedder)
+
+    async with async_session_factory() as session:
+        report = await run_retrieval_benchmark(
+            eval_cases_path=eval_file,
+            service=service,
+            session=session,
+            k=top_k,
+        )
+        print("\n--- RETRIEVAL BENCHMARK REPORT ---")
+        print(json.dumps(report.to_dict(), indent=2))
+        print(
+            f"\nOverall Mean Recall@{top_k}: {report.mean_recall_at_k * 100:.1f}% "
+            f"({report.passed_cases}/{report.total_cases} cases passed)"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Lenny Growth Assistant transcript ingestion CLI"
@@ -135,6 +162,23 @@ def main() -> None:
     # Stats command
     subparsers.add_parser("stats", help="Show database knowledge base statistics")
 
+    # Benchmark command
+    bench_p = subparsers.add_parser(
+        "benchmark", help="Run retrieval evaluation benchmark"
+    )
+    bench_p.add_argument(
+        "--eval-file",
+        type=Path,
+        default=Path("docs/evaluation/retrieval_cases.yaml"),
+        help="Path to evaluation cases YAML",
+    )
+    bench_p.add_argument(
+        "--fake-embed", action="store_true", help="Use deterministic fake embeddings"
+    )
+    bench_p.add_argument(
+        "--top-k", type=int, default=5, help="Recall@K top-k parameter"
+    )
+
     args = parser.parse_args()
 
     if args.command == "sync":
@@ -149,6 +193,14 @@ def main() -> None:
         asyncio.run(run_index(args.dir, force=True, limit=args.limit, use_fake=False))
     elif args.command == "stats":
         asyncio.run(run_stats())
+    elif args.command == "benchmark":
+        asyncio.run(
+            run_benchmark_cli(
+                eval_file=args.eval_file,
+                use_fake=args.fake_embed,
+                top_k=args.top_k,
+            )
+        )
 
 
 if __name__ == "__main__":

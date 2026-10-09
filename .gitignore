@@ -29,6 +29,7 @@ transcripts-cache/
 *.sqlite
 *.db
 *.log
+frontend-react-and-css.txt
 
 # OS/editor
 .DS_Store

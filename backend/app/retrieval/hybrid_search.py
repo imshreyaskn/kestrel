@@ -162,6 +162,29 @@ def compute_rrf_fusion(
     return selected_items
 
 
+@dataclass(frozen=True)
+class RetrievalResult(Sequence[EvidenceItem]):
+    """
+    Search result containing ranked evidence items and insufficient evidence detection.
+    Inherits from Sequence[EvidenceItem] for 100% backward-compatible list operations.
+    """
+
+    items: list[EvidenceItem]
+    insufficient_evidence: bool
+    query: str
+    top_score: float = 0.0
+    top_dense_score: float = 0.0
+
+    def __iter__(self):
+        return iter(self.items)
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __getitem__(self, index: int) -> EvidenceItem:  # type: ignore[override]
+        return self.items[index]
+
+
 class HybridRetrievalService:
     """Service executing PostgreSQL hybrid retrieval and RRF fusion."""
 
@@ -169,13 +192,17 @@ class HybridRetrievalService:
         self,
         embedder: EmbeddingProvider | None = None,
         top_k: int | None = None,
-        min_score: float | None = None,
+        min_dense_score: float | None = None,
+        min_rrf_score: float = 0.0,
     ) -> None:
         self.embedder = embedder or get_embedding_provider()
         self.top_k = top_k or settings.RETRIEVAL_TOP_K
-        self.min_score = (
-            min_score if min_score is not None else settings.RETRIEVAL_MIN_SCORE
+        self.min_dense_score = (
+            min_dense_score
+            if min_dense_score is not None
+            else settings.RETRIEVAL_MIN_SCORE
         )
+        self.min_rrf_score = min_rrf_score
 
     async def search(
         self,
@@ -183,7 +210,9 @@ class HybridRetrievalService:
         query: str,
         top_k: int | None = None,
         max_per_source: int = 3,
-    ) -> list[EvidenceItem]:
+        min_dense_score: float | None = None,
+        min_rrf_score: float | None = None,
+    ) -> RetrievalResult:
         """
         Execute hybrid search over transcript_chunks and return grounded evidence items.
 
@@ -192,21 +221,37 @@ class HybridRetrievalService:
             query: Natural language query from user.
             top_k: Max evidence items to return (defaults to settings.RETRIEVAL_TOP_K).
             max_per_source: Max chunks permitted from the same episode.
+            min_dense_score: Cosine similarity cutoff for dense candidates.
+            min_rrf_score: RRF threshold cutoff for fused candidates.
         """
         effective_top_k = top_k or self.top_k
+        effective_min_dense = (
+            min_dense_score if min_dense_score is not None else self.min_dense_score
+        )
+        effective_min_rrf = (
+            min_rrf_score if min_rrf_score is not None else self.min_rrf_score
+        )
+
         clean_query = query.strip()
         if not clean_query:
-            return []
+            return RetrievalResult(
+                items=[],
+                insufficient_evidence=True,
+                query=query,
+                top_score=0.0,
+                top_dense_score=0.0,
+            )
 
         # 1. Compute query vector
         query_embedding = await self.embedder.embed_query(clean_query)
         embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-        # 2. Retrieve dense vector candidates
+        # 2. Retrieve dense vector candidates meeting min_dense_score
         dense_candidates = await self._retrieve_dense(
             session=session,
             query_vector_str=embedding_str,
             limit=effective_top_k * 3,
+            min_dense_score=effective_min_dense,
         )
 
         # 3. Retrieve sparse keyword candidates
@@ -217,11 +262,26 @@ class HybridRetrievalService:
         )
 
         # 4. Fuse using Reciprocal-Rank Fusion
-        return compute_rrf_fusion(
+        items = compute_rrf_fusion(
             dense_candidates=dense_candidates,
             sparse_candidates=sparse_candidates,
             top_k=effective_top_k,
             max_per_source=max_per_source,
+            min_score=effective_min_rrf,
+        )
+
+        top_score = items[0].rrf_score if items else 0.0
+        top_dense = max((c.raw_score for c in dense_candidates), default=0.0)
+
+        # Insufficient evidence if no candidates qualified
+        insufficient = len(items) == 0
+
+        return RetrievalResult(
+            items=items,
+            insufficient_evidence=insufficient,
+            query=clean_query,
+            top_score=top_score,
+            top_dense_score=top_dense,
         )
 
     async def _retrieve_dense(
@@ -229,6 +289,7 @@ class HybridRetrievalService:
         session: AsyncSession,
         query_vector_str: str,
         limit: int,
+        min_dense_score: float = 0.0,
     ) -> list[RetrievedCandidate]:
         sql = text("""
             SELECT 
@@ -248,13 +309,20 @@ class HybridRetrievalService:
             FROM transcript_chunks tc
             JOIN transcript_sources ts ON tc.source_id = ts.id
             WHERE ts.is_active = TRUE
+              AND (1 - (tc.embedding <=> CAST(:query_vector AS vector))) >= :min_dense_score
             ORDER BY tc.embedding <=> CAST(:query_vector AS vector) ASC
             LIMIT :limit
         """)
 
         result = await session.execute(
-            sql, {"query_vector": query_vector_str, "limit": limit}
+            sql,
+            {
+                "query_vector": query_vector_str,
+                "limit": limit,
+                "min_dense_score": min_dense_score,
+            },
         )
+
         rows = result.mappings().all()
 
         return [

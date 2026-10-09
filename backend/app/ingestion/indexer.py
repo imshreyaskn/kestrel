@@ -114,6 +114,7 @@ class TranscriptIndexer:
                         stats=stats,
                     )
                 except Exception as e:
+                    await session.rollback()
                     stats.failed += 1
                     err_msg = f"Failed to index {source_key}: {e}"
                     logger.exception(err_msg)
@@ -251,6 +252,13 @@ class TranscriptIndexer:
         discovered_keys: set[str],
     ) -> int:
         """Mark sources that are in the database but no longer in the discovered files as inactive."""
+        # Safety guard: never deactivate active corpus if discovered_keys is empty
+        if not discovered_keys:
+            logger.warning(
+                "discovered_keys is empty; skipping inactive reconciliation to prevent corpus wipeout."
+            )
+            return 0
+
         stmt = (
             update(TranscriptSource)
             .where(
@@ -263,4 +271,3 @@ class TranscriptIndexer:
         await session.commit()
         rowcount = getattr(res, "rowcount", 0)
         return int(rowcount) if rowcount is not None else 0
-

@@ -137,8 +137,35 @@ dist/assets/index-TPLI075_.js   213.93 kB │ gzip: 66.49 kB
 ✓ built in 953ms
 ```
 
+## 3. Adversarial Audit Remediation (Post-Audit Fixes)
+
+An adversarial audit identified 7 critical defects in initial Phase 2 modules:
+1. **Disconnected `min_score` Flaw & Insufficient Evidence Detection:**
+   - Introduced `min_dense_score` filtering in `_retrieve_dense` (`>= 0.25`).
+   - Wired `min_rrf_score` into `compute_rrf_fusion`.
+   - Created `RetrievalResult(Sequence[EvidenceItem])` with `insufficient_evidence: bool` flag and `top_score` / `top_dense_score` metrics.
+2. **Missing Unit Test Coverage for `HybridRetrievalService`:**
+   - Added 4 comprehensive tests in `tests/unit/retrieval/test_hybrid_search.py` covering service execution, empty queries, unsupported queries, and DB error degradation.
+3. **Asyncpg Transaction Abort in `TranscriptIndexer`:**
+   - Added `await session.rollback()` in `index_directory` exception block, preventing cascading transaction aborts.
+4. **Catastrophic Inactive Reconciler Guard:**
+   - Added `if not discovered_keys: return 0` guard preventing accidental deactivation of the active corpus if an empty directory is passed.
+5. **Syncer Tarball Extraction Vulnerability:**
+   - Replaced root extraction with `tempfile.TemporaryDirectory()` and added PEP 706 `filter="data"` safe tar extraction.
+6. **Synthetic Test Theatre in Benchmark Runner:**
+   - Implemented real `run_retrieval_benchmark` runner in `backend/app/retrieval/benchmark.py` and `benchmark` CLI subcommand in `backend/app/ingestion/cli.py`.
+   - Tested real execution across all 20 evaluation cases in `tests/evaluation/test_retrieval_benchmark.py`.
+7. **Canonical Root `Makefile`:**
+   - Added `Makefile` providing `make dev`, `make test`, `make lint`, `make typecheck`, `make ingest`, `make stats`, `make reindex`, `make benchmark`, and `make down`.
+
+### 3.1 Post-Remediation Verification
+- **Full Test Suite:** `pytest -v` — **47 passed, 4 skipped, 0 failed** in 20.18s.
+- **Ruff Checks:** `python -m ruff check backend tests` — **0 errors**.
+- **Mypy Check:** `python -m mypy backend tests` — **0 errors across 43 source files**.
+
 ---
 
-## 3. Residual Risks & Next Phase
+## 4. Phase 2 Verdict: CLOSED & LOCKED
 
-- **Phase 3 Ready:** With the knowledge base ingestion pipeline, hybrid search service, and RRF fusion in place, the application is ready for Phase 3 (Conversation Engine, SSE Streaming, and Pi AI Agent Gateway integration).
+All Phase 2 requirements, audit findings, and quality gates are completely satisfied and empirically verified. Ready for Phase 3.
+
