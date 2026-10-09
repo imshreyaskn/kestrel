@@ -55,6 +55,15 @@
 - Every control must do what it claims. Include empty, loading, error, cancellation, narrow viewport, keyboard, and focus states.
 - Use semantic HTML, accessible names, visible focus, reduced-motion support, and responsive layouts.
 
+## Hard-learned anti-patterns & non-negotiable realizations (Phase 0 incident)
+- **Zero fake stubs or synthetic test theatre:** Never write spike scripts or integration tests that return hardcoded mocks and print "Passed!" without importing the actual SDKs/libraries. A spike must import the real packages, execute real calls, and verify real types.
+- **Never claim completion before command execution:** Never mark a phase, gate, or feature as `PASSED`, `VERIFIED`, or `COMPLETED` in `PRD.md`, `README.md`, or transcripts before the real command has actually executed, exited with code 0, and output has been verified.
+- **No phantom file references:** Never reference files in Dockerfiles, package manifests, or configs (e.g. `server.ts`) before they exist and are implemented.
+- **Bridge environment constraints immediately:** When the host environment does not meet SDK requirements (e.g., host Node 20 vs. Pi SDK Node 22), build and execute inside the target container immediately rather than leaving dead stubs on the host.
+- **Mandatory negative & edge-case testing:** Every parser or extractor (e.g. `json_extractor.py`) must be tested with adversarial edge cases (e.g. nested code fences with SQL/curly braces inside JSON string values), and basic project glue (e.g. `pytest.ini`) must be validated.
+- **Skeptical self-audit:** Assume your own work is incomplete or broken until empirical terminal output proves otherwise.
+
 ## Work logging
 - Record significant real agent attempts, failures, corrections, and verification outcomes in `agent-transcripts/` as work happens. Do not fabricate transcripts after the fact. Sanitize secrets and unrelated personal data before commit.
 - Keep an ADR for significant choices and update it if evidence changes the decision.
+
