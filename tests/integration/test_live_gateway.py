@@ -56,7 +56,8 @@ def test_gateway_generate_executes_pi_ai_completion():
         ],
     }
 
-    r = httpx.post(f"{GATEWAY_URL}/api/v1/generate", json=payload, timeout=60.0)
+    headers = {"x-internal-service-token": "replace-with-a-long-random-local-token"}
+    r = httpx.post(f"{GATEWAY_URL}/api/v1/generate", json=payload, headers=headers, timeout=60.0)
     assert r.status_code == 200, f"Generate failed: {r.text}"
     data = r.json()
     assert data.get("provider") == "local"
