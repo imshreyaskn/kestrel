@@ -1,0 +1,231 @@
+# Retrieval Evaluation Cases Fixture (IMPLEMENTATION_SPEC §7.7)
+# 20 curated test cases across factual, semantic, framework, synthesis, unsupported, nuanced, and typo queries.
+# Expected sources are mapped to canonical repository paths in ChatPRD/lennys-podcast-transcripts.
+
+cases:
+  # 1. Direct Factual Retrieval
+  - id: case_01_pmf_survey_threshold
+    question: "What is the exact percentage threshold in Rahul Vohra's product-market fit engine where users would be very disappointed?"
+    case_type: factual
+    expected_sources:
+      - "episodes/rahul-vohra/transcript.md"
+    key_concepts:
+      - "40%"
+      - "very disappointed"
+      - "Sean Ellis"
+    expected_behavior: "Retrieve Rahul Vohra episode identifying the 40% very disappointed threshold."
+
+  - id: case_02_onboarding_touchpoint
+    question: "According to Adam Fishman, why is onboarding unique compared to every other feature in a product?"
+    case_type: factual
+    expected_sources:
+      - "episodes/adam-fishman/transcript.md"
+    key_concepts:
+      - "100% of people"
+      - "onboarding"
+    expected_behavior: "Retrieve Adam Fishman episode highlighting that 100% of users experience onboarding."
+
+  - id: case_03_positioning_components
+    question: "What are the five components of effective product positioning according to April Dunford?"
+    case_type: factual
+    expected_sources:
+      - "episodes/april-dunford-20/transcript.md"
+    key_concepts:
+      - "competitive alternatives"
+      - "differentiated value"
+      - "target market"
+    expected_behavior: "Retrieve April Dunford episode detailing the core components of positioning."
+
+  # 2. Paraphrased / Semantic Retrieval
+  - id: case_04_early_stage_saas_activation
+    question: "How should an early-stage B2B startup increase new customer activation without harming long-term retention?"
+    case_type: semantic
+    expected_sources:
+      - "episodes/adam-fishman/transcript.md"
+      - "episodes/gustaf-alstromer/transcript.md"
+    key_concepts:
+      - "activation"
+      - "retention"
+      - "aha moment"
+    expected_behavior: "Retrieve episodes discussing activation hurdles, retention curves, and user drop-off."
+
+  - id: case_05_separating_decision_from_outcome
+    question: "How do you evaluate whether a product decision was sound when the actual business outcome was negative?"
+    case_type: semantic
+    expected_sources:
+      - "episodes/annie-duke/transcript.md"
+    key_concepts:
+      - "resulting"
+      - "decision quality"
+      - "bets"
+    expected_behavior: "Retrieve Annie Duke episode explaining resulting and decision quality independent of luck."
+
+  - id: case_06_product_led_sales_transition
+    question: "When and how should a self-serve freemium product layer on an enterprise sales team?"
+    case_type: semantic
+    expected_sources:
+      - "episodes/elena-verna-20/transcript.md"
+    key_concepts:
+      - "product-led sales"
+      - "PQL"
+      - "sales assist"
+    expected_behavior: "Retrieve Elena Verna 2.0 episode covering the transition from self-serve PLG to sales-assisted enterprise motions."
+
+  # 3. Named Framework / Exact Phrase
+  - id: case_07_lno_framework
+    question: "How does Shreyas Doshi define Leverage, Neutral, and Overhead tasks in the LNO framework?"
+    case_type: framework
+    expected_sources:
+      - "episodes/shreyas-doshi/transcript.md"
+    key_concepts:
+      - "LNO framework"
+      - "Leverage"
+      - "Neutral"
+      - "Overhead"
+    expected_behavior: "Retrieve Shreyas Doshi episode explaining task prioritization via LNO classification."
+
+  - id: case_08_superhuman_pmf_engine
+    question: "Explain the four steps of the Superhuman Product-Market Fit Engine."
+    case_type: framework
+    expected_sources:
+      - "episodes/rahul-vohra/transcript.md"
+    key_concepts:
+      - "PMF engine"
+      - "segmentation"
+      - "high-expectation customer"
+    expected_behavior: "Retrieve Rahul Vohra episode outlining the 4-step survey, segmentation, and roadmap process."
+
+  - id: case_09_jtbd_forces_of_progress
+    question: "What are the four forces of progress that Bob Moesta uses in Jobs to Be Done theory?"
+    case_type: framework
+    expected_sources:
+      - "episodes/bob-moesta/transcript.md"
+    key_concepts:
+      - "forces of progress"
+      - "push"
+      - "pull"
+      - "anxiety"
+      - "habit"
+    expected_behavior: "Retrieve Bob Moesta episode explaining push, pull, anxiety, and habit forces."
+
+  # 4. Multi-Episode Synthesis
+  - id: case_10_hiring_first_growth_lead
+    question: "What qualities and background should founders look for when hiring their first dedicated growth leader?"
+    case_type: multi_episode
+    expected_sources:
+      - "episodes/adam-fishman/transcript.md"
+      - "episodes/elena-verna/transcript.md"
+    key_concepts:
+      - "first growth hire"
+      - "experimentation"
+      - "growth mindset"
+    expected_behavior: "Retrieve multiple episodes discussing the profile, pitfalls, and charters of early growth teams."
+
+  - id: case_11_positioning_vs_sales_pitch
+    question: "How does market positioning translate directly into an effective sales conversation according to April Dunford?"
+    case_type: multi_episode
+    expected_sources:
+      - "episodes/april-dunford/transcript.md"
+      - "episodes/april-dunford-20/transcript.md"
+    key_concepts:
+      - "positioning"
+      - "sales pitch"
+      - "customer insight"
+    expected_behavior: "Retrieve both April Dunford episodes bridging positioning strategy with sales pitch execution."
+
+  - id: case_12_growth_loops_vs_funnels
+    question: "Why do top growth practitioners advocate replacing linear acquisition funnels with compounding growth loops?"
+    case_type: multi_episode
+    expected_sources:
+      - "episodes/brian-balfour/transcript.md"
+      - "episodes/elena-verna/transcript.md"
+    key_concepts:
+      - "growth loops"
+      - "funnels"
+      - "compounding"
+    expected_behavior: "Retrieve episodes analyzing loop reinvestment versus funnel leakages."
+
+  # 5. Follow-up / Session Context
+  - id: case_13_pmf_follow_up_action
+    question: "Once we have identified those users who would be very disappointed, what exact roadmap changes does Rahul suggest?"
+    case_type: follow_up
+    expected_sources:
+      - "episodes/rahul-vohra/transcript.md"
+    key_concepts:
+      - "double down"
+      - "address objections"
+      - "roadmap balance"
+    expected_behavior: "Retrieve Rahul Vohra episode on splitting the engineering roadmap 50/50 between love and blockers."
+
+  - id: case_14_growth_team_reporting_follow_up
+    question: "And where should that team report within the company hierarchy?"
+    case_type: follow_up
+    expected_sources:
+      - "episodes/adam-fishman/transcript.md"
+    key_concepts:
+      - "reporting structure"
+      - "VP of Product"
+      - "CEO"
+    expected_behavior: "Context-dependent query successfully resolves to growth team organizational reporting."
+
+  # 6. Intentionally Unsupported Questions (Negative Tests)
+  - id: case_15_kubernetes_bare_metal_setup
+    question: "How do you configure Cilium CNI on a bare-metal Kubernetes cluster with BGP peering?"
+    case_type: unsupported
+    expected_sources: []
+    key_concepts:
+      - "insufficient evidence"
+    expected_behavior: "Corpus contains no Kubernetes infrastructure content. Hybrid search must return low confidence and trigger insufficient_evidence."
+
+  - id: case_16_quantum_computing_algorithms
+    question: "What is the mathematical proof of Shor's quantum factoring algorithm efficiency?"
+    case_type: unsupported
+    expected_sources: []
+    key_concepts:
+      - "insufficient evidence"
+    expected_behavior: "Must return low similarity scores, indicating query is outside product/growth domain."
+
+  # 7. Contradictory / Nuanced Expert Advice
+  - id: case_17_freemium_vs_free_trial
+    question: "When does freemium harm a SaaS business compared to a strict reverse trial, according to Elena Verna?"
+    case_type: nuanced
+    expected_sources:
+      - "episodes/elena-verna/transcript.md"
+      - "episodes/elena-verna-20/transcript.md"
+    key_concepts:
+      - "freemium"
+      - "reverse trial"
+      - "cannibalization"
+    expected_behavior: "Retrieve Elena Verna discussions contrasting freemium support costs with trial conversion velocity."
+
+  - id: case_18_startup_pm_expectations
+    question: "Why does Casey Winters argue that big-tech PM experience can actually handicap someone entering an early-stage startup?"
+    case_type: nuanced
+    expected_sources:
+      - "episodes/casey-winters/transcript.md"
+    key_concepts:
+      - "big tech"
+      - "startup PM"
+      - "unprepared"
+    expected_behavior: "Retrieve Casey Winters episode breaking down how big-tech optimization playbooks fail without PMF."
+
+  # 8. Typo / Short Query
+  - id: case_19_typo_query_pmf
+    question: "suprehumna pmf engien"
+    case_type: typo_short
+    expected_sources:
+      - "episodes/rahul-vohra/transcript.md"
+    key_concepts:
+      - "Superhuman"
+      - "product market fit"
+    expected_behavior: "Dense vector embedding gracefully handles typos and retrieves Superhuman PMF episode."
+
+  - id: case_20_short_query_onboarding
+    question: "onboarding 100%"
+    case_type: typo_short
+    expected_sources:
+      - "episodes/adam-fishman/transcript.md"
+    key_concepts:
+      - "onboarding"
+      - "100%"
+    expected_behavior: "Short query retrieves Adam Fishman episode on 100% of users experiencing onboarding."

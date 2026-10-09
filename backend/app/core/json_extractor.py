@@ -86,7 +86,9 @@ def extract_json_payload(text: str) -> str:
 
     # 2. Greedy outermost code fence (```json ... ``` or ``` ... ```)
     # Handles nested code fences inside JSON string values.
-    greedy_fence = re.search(r"```(?:json)?\s*\n?(.*)\n?```", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    greedy_fence = re.search(
+        r"```(?:json)?\s*\n?(.*)\n?```", cleaned, flags=re.DOTALL | re.IGNORECASE
+    )
     if greedy_fence:
         c = greedy_fence.group(1).strip()
         candidates.append(c)
@@ -95,7 +97,9 @@ def extract_json_payload(text: str) -> str:
             candidates.append(outer_in_fence)
 
     # 3. Non-greedy fences (in case multiple separate code blocks exist in text)
-    for fence in re.finditer(r"```(?:json)?\s*\n?(.*?)\n?```", cleaned, flags=re.DOTALL | re.IGNORECASE):
+    for fence in re.finditer(
+        r"```(?:json)?\s*\n?(.*?)\n?```", cleaned, flags=re.DOTALL | re.IGNORECASE
+    ):
         c = fence.group(1).strip()
         candidates.append(c)
         outer = find_outermost_json_object(c)
@@ -127,9 +131,13 @@ def extract_and_validate(text: str, schema: type[T]) -> T:
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError as e:
-        raise StructuredExtractionError(f"Extracted payload is not valid JSON: {e}\nPayload: {raw_json[:200]}") from e
+        raise StructuredExtractionError(
+            f"Extracted payload is not valid JSON: {e}\nPayload: {raw_json[:200]}"
+        ) from e
 
     try:
         return schema.model_validate(data)
     except ValidationError as e:
-        raise StructuredExtractionError(f"JSON does not conform to schema {schema.__name__}: {e}") from e
+        raise StructuredExtractionError(
+            f"JSON does not conform to schema {schema.__name__}: {e}"
+        ) from e

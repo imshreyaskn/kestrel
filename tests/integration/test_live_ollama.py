@@ -46,7 +46,9 @@ def test_embeddinggemma_strictly_768_dimensions():
     embeddings = data.get("embeddings", [])
     assert len(embeddings) > 0, "No embeddings returned"
     vector = embeddings[0]
-    assert len(vector) == 768, f"Expected 768 dimensions for vector(768) schema, got {len(vector)}"
+    assert len(vector) == 768, (
+        f"Expected 768 dimensions for vector(768) schema, got {len(vector)}"
+    )
 
 
 @pytest.mark.integration

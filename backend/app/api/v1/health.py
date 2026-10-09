@@ -47,9 +47,15 @@ async def ready_check() -> JSONResponse:
         async with httpx.AsyncClient(timeout=2.0) as client:
             ollama_res = await client.get(f"{settings.OLLAMA_BASE_URL}/api/version")
             if ollama_res.status_code == 200:
-                components["ollama"] = {"status": "up", "version": ollama_res.json().get("version")}
+                components["ollama"] = {
+                    "status": "up",
+                    "version": ollama_res.json().get("version"),
+                }
             else:
-                components["ollama"] = {"status": "degraded", "code": ollama_res.status_code}
+                components["ollama"] = {
+                    "status": "degraded",
+                    "code": ollama_res.status_code,
+                }
     except Exception as e:  # noqa: BLE001
         components["ollama"] = {"status": "unreachable", "error": str(e)}
 
@@ -60,11 +66,16 @@ async def ready_check() -> JSONResponse:
             if gw_res.status_code == 200:
                 components["agent_gateway"] = {"status": "up", "details": gw_res.json()}
             else:
-                components["agent_gateway"] = {"status": "degraded", "code": gw_res.status_code}
+                components["agent_gateway"] = {
+                    "status": "degraded",
+                    "code": gw_res.status_code,
+                }
     except Exception as e:  # noqa: BLE001
         components["agent_gateway"] = {"status": "unreachable", "error": str(e)}
 
-    status_code = status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
+    status_code = (
+        status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
+    )
 
     return JSONResponse(
         status_code=status_code,

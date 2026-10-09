@@ -22,7 +22,9 @@ class Settings(BaseSettings):
     AGENT_GATEWAY_PORT: int = 8010
 
     # Database (PostgreSQL + pgvector)
-    DATABASE_URL: str = "postgresql+asyncpg://lenny:lenny_dev_only@localhost:5433/lenny_growth"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://lenny:lenny_dev_only@localhost:5433/lenny_growth"
+    )
     DEMO_USER_ID: str = "00000000-0000-4000-8000-000000000001"
 
     # Agent Gateway (Pi Coding Agent SDK)

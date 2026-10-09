@@ -55,7 +55,9 @@ def test_providers_status_endpoint():
 
 def test_correlation_id_and_timing_headers_propagated():
     custom_id = "test-corr-uuid-12345"
-    response = client.get("/api/v1/health/live", headers={"x-correlation-id": custom_id})
+    response = client.get(
+        "/api/v1/health/live", headers={"x-correlation-id": custom_id}
+    )
     assert response.status_code == 200
     assert response.headers.get("x-correlation-id") == custom_id
     assert response.headers.get("x-request-id") == custom_id

@@ -24,7 +24,9 @@ class UIConfigResponse(BaseModel):
     cloud_enabled: dict[str, bool]
 
 
-@router.get("/config", response_model=UIConfigResponse, summary="Public UI Configuration")
+@router.get(
+    "/config", response_model=UIConfigResponse, summary="Public UI Configuration"
+)
 async def get_ui_config() -> UIConfigResponse:
     """Return public, UI-safe configuration values only. Never exposes secrets or internal URLs."""
     return UIConfigResponse(
@@ -59,7 +61,9 @@ async def get_providers_status() -> dict:
             status_map["local"] = {
                 "provider": "ollama",
                 "available": res.status_code == 200,
-                "version": res.json().get("version") if res.status_code == 200 else None,
+                "version": res.json().get("version")
+                if res.status_code == 200
+                else None,
                 "model": settings.OLLAMA_CHAT_MODEL,
             }
     except Exception as e:  # noqa: BLE001
@@ -73,9 +77,18 @@ async def get_providers_status() -> dict:
     # 2. Cloud Providers Check
     status_map["cloud"] = {
         "configured_provider": settings.DEFAULT_CLOUD_PROVIDER,
-        "gemini": {"configured": bool(settings.GEMINI_API_KEY), "model": settings.GEMINI_MODEL},
-        "anthropic": {"configured": bool(settings.ANTHROPIC_API_KEY), "model": settings.ANTHROPIC_MODEL},
-        "openai": {"configured": bool(settings.OPENAI_API_KEY), "model": settings.OPENAI_MODEL},
+        "gemini": {
+            "configured": bool(settings.GEMINI_API_KEY),
+            "model": settings.GEMINI_MODEL,
+        },
+        "anthropic": {
+            "configured": bool(settings.ANTHROPIC_API_KEY),
+            "model": settings.ANTHROPIC_MODEL,
+        },
+        "openai": {
+            "configured": bool(settings.OPENAI_API_KEY),
+            "model": settings.OPENAI_MODEL,
+        },
     }
 
     return status_map

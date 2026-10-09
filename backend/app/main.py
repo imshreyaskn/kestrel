@@ -48,7 +48,11 @@ app.add_middleware(
 # Request ID, Correlation ID, and Timing Middleware
 @app.middleware("http")
 async def request_id_and_timing_middleware(request: Request, call_next):
-    req_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id") or str(uuid.uuid4())
+    req_id = (
+        request.headers.get("x-request-id")
+        or request.headers.get("x-correlation-id")
+        or str(uuid.uuid4())
+    )
     request.state.request_id = req_id
     request.state.correlation_id = req_id
 
@@ -94,7 +98,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
     errors = exc.errors()
-    first_msg = errors[0].get("msg", "Validation error") if errors else "Invalid request parameters"
+    first_msg = (
+        errors[0].get("msg", "Validation error")
+        if errors
+        else "Invalid request parameters"
+    )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={

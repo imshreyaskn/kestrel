@@ -39,7 +39,10 @@ TestAsyncSession = async_sessionmaker(
 def is_db_reachable() -> bool:
     import socket
     from urllib.parse import urlparse
-    url = urlparse(settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"))
+
+    url = urlparse(
+        settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    )
     host = url.hostname or "localhost"
     port = url.port or 5432
     try:
@@ -56,7 +59,9 @@ async def test_health_ready_live_dependencies():
     if not is_db_reachable():
         pytest.skip(f"PostgreSQL database is not reachable on {settings.DATABASE_URL}")
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         response = await client.get("/api/v1/health/ready")
         assert response.status_code == 200, f"Health ready failed: {response.text}"
         data = response.json()
@@ -226,17 +231,23 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
         result = await session.execute(stmt)
         nearest = result.scalar_one_or_none()
         assert nearest is not None
-        assert nearest.id == chunk_1_id, "Cosine distance search must rank aligned chunk #1 first"
+        assert nearest.id == chunk_1_id, (
+            "Cosine distance search must rank aligned chunk #1 first"
+        )
         assert "Activation is the single biggest predictor" in nearest.content
 
         # Verify chat session and messages
-        res_session = await session.execute(select(ChatSession).where(ChatSession.id == session_id))
+        res_session = await session.execute(
+            select(ChatSession).where(ChatSession.id == session_id)
+        )
         fetched_session = res_session.scalar_one_or_none()
         assert fetched_session is not None
         assert fetched_session.title == "Elena Verna PLG Strategy"
 
         # Verify brief and artifact
-        res_brief = await session.execute(select(GrowthBrief).where(GrowthBrief.id == brief_id))
+        res_brief = await session.execute(
+            select(GrowthBrief).where(GrowthBrief.id == brief_id)
+        )
         fetched_brief = res_brief.scalar_one_or_none()
         assert fetched_brief is not None
         assert fetched_brief.data["stage"] == "Series A"
@@ -244,12 +255,18 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
         # Cleanup test entities
         await session.execute(delete(Artifact).where(Artifact.id == artifact_id))
         await session.execute(delete(GrowthBrief).where(GrowthBrief.id == brief_id))
-        await session.execute(delete(MessageSource).where(MessageSource.message_id == msg_id))
+        await session.execute(
+            delete(MessageSource).where(MessageSource.message_id == msg_id)
+        )
         await session.execute(delete(Message).where(Message.id == msg_id))
         await session.execute(delete(ChatSession).where(ChatSession.id == session_id))
         await session.execute(delete(User).where(User.id == user_id))
-        await session.execute(delete(TranscriptChunk).where(TranscriptChunk.source_id == source_id))
-        await session.execute(delete(TranscriptSource).where(TranscriptSource.id == source_id))
+        await session.execute(
+            delete(TranscriptChunk).where(TranscriptChunk.source_id == source_id)
+        )
+        await session.execute(
+            delete(TranscriptSource).where(TranscriptSource.id == source_id)
+        )
         await session.commit()
 
     await test_engine.dispose()
