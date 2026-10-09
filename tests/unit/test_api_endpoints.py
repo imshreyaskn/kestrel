@@ -58,4 +58,19 @@ def test_correlation_id_and_timing_headers_propagated():
     response = client.get("/api/v1/health/live", headers={"x-correlation-id": custom_id})
     assert response.status_code == 200
     assert response.headers.get("x-correlation-id") == custom_id
+    assert response.headers.get("x-request-id") == custom_id
     assert "x-response-time-ms" in response.headers
+
+
+def test_standardized_error_envelope_on_404():
+    response = client.get("/api/v1/non-existent-endpoint-xyz")
+    assert response.status_code == 404
+    data = response.json()
+    assert "error" in data
+    err = data["error"]
+    assert err["code"] == "NOT_FOUND"
+    assert "retryable" in err
+    assert err["retryable"] is False
+    assert "request_id" in err
+    assert "message" in err
+    assert response.headers.get("x-request-id") == err["request_id"]

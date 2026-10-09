@@ -128,5 +128,36 @@ Exit code: 0
 
 ---
 
-## 4. Phase 1 Conclusion
-Phase 1 Foundation & Frontend Implementation is **COMPLETE** and verified by empirical test execution.
+## 4. Adversarial Audit & Spec Alignment Remediation
+
+Following an adversarial audit of the Phase 1 deliverables, all identified deviations were resolved:
+
+1. **Schema Alignment (Migration `0003_align_spec_schema.py` & `entities.py`):**
+   - Added `search_vector TSVECTOR NOT NULL` to `transcript_chunks` with GIN index `ix_transcript_chunks_search_vector`, generated as `to_tsvector('english', content)` to unblock Phase 2 sparse retrieval.
+   - Enforced `UNIQUE (source_id, chunk_index)` constraint on `transcript_chunks`.
+   - Added `char_start` and `char_end` to `transcript_chunks`.
+   - Added `metadata JSONB NOT NULL DEFAULT '{}'` across `users`, `chat_sessions`, and `messages`.
+   - Added `display_name TEXT NOT NULL` to `users` and made `email` nullable.
+   - Added `provider_preference` with check constraint to `chat_sessions` and `last_message_at TIMESTAMPTZ`.
+   - Added `workflow_mode`, `error_code`, `completed_at` to `messages` with check constraints on `role`, `status`, and `provider`.
+   - Added `upstream_path`, `video_id`, `description`, `repo_commit`, and `ingested_at` to `transcript_sources`.
+
+2. **Standardized Error Envelope (`main.py`):**
+   - Implemented strict error envelope matching `IMPLEMENTATION_SPEC.md §6.1`:
+     `{ "error": { "code": "...", "message": "...", "retryable": bool, "request_id": "..." } }`.
+   - Added exception handlers for `RequestValidationError` (422) and `StarletteHTTPException` (400/404/429/500/503/504).
+   - Added `test_standardized_error_envelope_on_404` unit test.
+
+3. **Supply Chain / Build Hygiene (`backend/Dockerfile`):**
+   - Removed hardcoded Alibaba Cloud PyPI mirror in `backend/Dockerfile`, restoring standard PyPI.
+
+4. **Integration Test Hardening (`test_db_and_readiness.py`):**
+   - Added `is_db_reachable()` connection probe helper to `test_db_and_readiness.py` to prevent raw `ConnectionRefusedError` crashes when Docker Desktop is offline, ensuring 100% deterministic test execution.
+
+5. **Live Provider API Connection (`frontend/src/lib/api.ts`):**
+   - Replaced static `getProviders()` mock with live HTTP query to `/api/v1/providers`.
+
+---
+
+## 5. Phase 1 Conclusion
+Phase 1 Foundation, Schema Alignment, and Frontend Implementation is **COMPLETE**, strictly aligned with `IMPLEMENTATION_SPEC.md`, and verified by empirical test execution.

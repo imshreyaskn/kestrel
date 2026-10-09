@@ -6,8 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --default-timeout=100 --retries=5 -i https://mirrors.aliyun.com/pypi/simple/ --extra-index-url https://pypi.org/simple -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 ENV PYTHONPATH=/app
 COPY . ./backend

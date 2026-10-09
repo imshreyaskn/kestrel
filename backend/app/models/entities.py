@@ -6,6 +6,7 @@ import datetime
 import uuid
 from typing import Any
 
+import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector  # type: ignore[import-not-found,import-untyped]
 from sqlalchemy import (
     Boolean,
@@ -17,8 +18,9 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
@@ -28,8 +30,10 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False, default="User")
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)  # legacy compatibility
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -51,7 +55,8 @@ class ChatSession(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="New Chat")
-    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    provider_preference: Mapped[str] = mapped_column(Text, nullable=False, default="local")
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, default="local")  # legacy compatibility
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -61,6 +66,8 @@ class ChatSession(Base):
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
         onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
+    last_message_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
 
     user: Mapped["User"] = relationship("User", back_populates="sessions")
     messages: Mapped[list["Message"]] = relationship("Message", back_populates="session", cascade="all, delete-orphan")
@@ -77,13 +84,17 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="research")
+    workflow_mode: Mapped[str | None] = mapped_column(Text, nullable=True, default="research")
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, default="research")  # legacy compatibility
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
     model_id: Mapped[str] = mapped_column(String(64), nullable=False, default="qwen2.5:1.5b")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="complete")
+    error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc), index=True
     )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="messages")
     sources: Mapped[list["MessageSource"]] = relationship("MessageSource", back_populates="message", cascade="all, delete-orphan")
@@ -97,9 +108,16 @@ class TranscriptSource(Base):
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     guest: Mapped[str | None] = mapped_column(String(255), nullable=True)
     episode_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    video_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     publish_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    upstream_path: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    repo_commit: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    ingested_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -124,9 +142,20 @@ class TranscriptChunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding = mapped_column(Vector(768), nullable=False)
+    search_vector = mapped_column(
+        TSVECTOR,
+        sa.Computed("to_tsvector('english', coalesce(content, ''))", persisted=True),
+        nullable=False,
+    )
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    char_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    char_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source_id", "chunk_index", name="uq_transcript_chunks_source_chunk"),
     )
 
     source: Mapped["TranscriptSource"] = relationship("TranscriptSource", back_populates="chunks")

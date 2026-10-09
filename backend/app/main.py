@@ -45,41 +45,97 @@ app.add_middleware(
 )
 
 
-# Correlation ID and Request Timing Middleware
+# Request ID, Correlation ID, and Timing Middleware
 @app.middleware("http")
-async def correlation_id_and_timing_middleware(request: Request, call_next):
-    correlation_id = request.headers.get("x-correlation-id") or str(uuid.uuid4())
-    request.state.correlation_id = correlation_id
+async def request_id_and_timing_middleware(request: Request, call_next):
+    req_id = request.headers.get("x-request-id") or request.headers.get("x-correlation-id") or str(uuid.uuid4())
+    request.state.request_id = req_id
+    request.state.correlation_id = req_id
 
     start_time = time.perf_counter()
     try:
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000
-        response.headers["x-correlation-id"] = correlation_id
+        response.headers["x-request-id"] = req_id
+        response.headers["x-correlation-id"] = req_id
         response.headers["x-response-time-ms"] = f"{duration_ms:.2f}"
 
         # Avoid spamming logs on health probes
         if not request.url.path.endswith("/health/live"):
             logger.info(
-                f'{{"method":"{request.method}","path":"{request.url.path}","status":{response.status_code},"duration_ms":{duration_ms:.2f},"correlation_id":"{correlation_id}"}}'
+                f'{{"method":"{request.method}","path":"{request.url.path}","status":{response.status_code},"duration_ms":{duration_ms:.2f},"request_id":"{req_id}"}}'
             )
         return response
     except Exception as exc:  # noqa: BLE001
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.error(
-            f'{{"method":"{request.method}","path":"{request.url.path}","error":"{exc!s}","duration_ms":{duration_ms:.2f},"correlation_id":"{correlation_id}"}}'
+            f'{{"method":"{request.method}","path":"{request.url.path}","error":"{exc!s}","duration_ms":{duration_ms:.2f},"request_id":"{req_id}"}}'
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": {
-                    "code": "internal_server_error",
+                    "code": "INTERNAL_SERVER_ERROR",
                     "message": "An unexpected server error occurred.",
-                    "correlation_id": correlation_id,
+                    "retryable": False,
+                    "request_id": req_id,
                 }
             },
-            headers={"x-correlation-id": correlation_id},
+            headers={"x-request-id": req_id, "x-correlation-id": req_id},
         )
+
+
+# Standardized Exception Handlers (IMPLEMENTATION_SPEC §6.1)
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    errors = exc.errors()
+    first_msg = errors[0].get("msg", "Validation error") if errors else "Invalid request parameters"
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": first_msg,
+                "retryable": False,
+                "request_id": req_id,
+            }
+        },
+        headers={"x-request-id": req_id, "x-correlation-id": req_id},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    status_code_map = {
+        400: ("BAD_REQUEST", False),
+        404: ("NOT_FOUND", False),
+        422: ("VALIDATION_ERROR", False),
+        429: ("RATE_LIMITED", True),
+        502: ("BAD_GATEWAY", True),
+        503: ("SERVICE_UNAVAILABLE", True),
+        504: ("GATEWAY_TIMEOUT", True),
+    }
+    default_code, default_retryable = status_code_map.get(
+        exc.status_code, ("INTERNAL_SERVER_ERROR", False)
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": default_code,
+                "message": str(exc.detail),
+                "retryable": default_retryable,
+                "request_id": req_id,
+            }
+        },
+        headers={"x-request-id": req_id, "x-correlation-id": req_id},
+    )
 
 
 # Include API v1 Router

@@ -36,9 +36,26 @@ TestAsyncSession = async_sessionmaker(
 )
 
 
+def is_db_reachable() -> bool:
+    import socket
+    from urllib.parse import urlparse
+    url = urlparse(settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"))
+    host = url.hostname or "localhost"
+    port = url.port or 5432
+    try:
+        s = socket.create_connection((host, port), timeout=1.5)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
 @pytest.mark.asyncio
 async def test_health_ready_live_dependencies():
     """Verifies that the /health/ready probe reports database up."""
+    if not is_db_reachable():
+        pytest.skip(f"PostgreSQL database is not reachable on {settings.DATABASE_URL}")
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/health/ready")
         assert response.status_code == 200, f"Health ready failed: {response.text}"
@@ -58,6 +75,8 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
     3. Persists ChatSession, Message, MessageSource, GrowthBrief, and Artifact.
     4. Cleans up test records.
     """
+    if not is_db_reachable():
+        pytest.skip(f"PostgreSQL database is not reachable on {settings.DATABASE_URL}")
     session_id = uuid.uuid4()
     user_id = uuid.uuid4()
     source_id = uuid.uuid4()
@@ -90,6 +109,7 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
             guest="Elena Verna",
             publish_date=datetime.date(2024, 3, 1),
             episode_url="https://lenny.example.com/elena-verna",
+            upstream_path="transcripts/elena-verna.md",
             content_hash="source_hash_001",
             is_active=True,
         )
@@ -119,6 +139,7 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
         # 3. Create User and ChatSession
         test_user = User(
             id=user_id,
+            display_name="Test Operator",
             email=f"user-{user_id}@kestrel.test",
             full_name="Test Operator",
         )
@@ -183,7 +204,7 @@ async def test_live_postgres_pgvector_crud_and_similarity_search():
             session_id=session_id,
             source_message_id=msg_id,
             growth_brief_id=brief_id,
-            kind="checklist",
+            kind="markdown",
             title="Activation Checklist",
             content="1. Setup workspace\n2. Invite teammate",
             preview_content="Activation Checklist preview",

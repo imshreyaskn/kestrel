@@ -89,22 +89,51 @@ export const api = {
    * Providers
    */
   async getProviders(): Promise<ProviderConfig[]> {
-    return [
-      {
-        id: 'local',
-        name: 'Local',
-        model: 'qwen2.5:1.5b',
-        status: 'active',
-        description: 'Ollama local inference · completely private on your workstation',
-      },
-      {
-        id: 'cloud',
-        name: 'Cloud',
-        model: 'gemini-2.0-flash',
-        status: 'available',
-        description: 'Google Gemini 2.0 Flash · fast cloud reasoning',
-      },
-    ];
+    try {
+      const data = await request<{
+        local?: { available?: boolean; model?: string; provider?: string };
+        cloud?: { configured_provider?: string; gemini?: { configured?: boolean; model?: string } };
+      }>('/api/v1/providers');
+
+      const localAvail = data.local?.available ?? true;
+      const localModel = data.local?.model || 'qwen2.5:1.5b';
+      const cloudModel = data.cloud?.gemini?.model || 'gemini-2.0-flash';
+      const cloudConfigured = data.cloud?.gemini?.configured ?? true;
+
+      return [
+        {
+          id: 'local',
+          name: 'Local',
+          model: localModel,
+          status: localAvail ? 'active' : 'offline',
+          description: 'Ollama local inference · completely private on your workstation',
+        },
+        {
+          id: 'cloud',
+          name: 'Cloud',
+          model: cloudModel,
+          status: cloudConfigured ? 'available' : 'offline',
+          description: 'Google Gemini 2.0 Flash · fast cloud reasoning',
+        },
+      ];
+    } catch {
+      return [
+        {
+          id: 'local',
+          name: 'Local',
+          model: 'qwen2.5:1.5b',
+          status: 'active',
+          description: 'Ollama local inference · completely private on your workstation',
+        },
+        {
+          id: 'cloud',
+          name: 'Cloud',
+          model: 'gemini-2.0-flash',
+          status: 'available',
+          description: 'Google Gemini 2.0 Flash · fast cloud reasoning',
+        },
+      ];
+    }
   },
 
   /**
