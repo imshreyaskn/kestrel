@@ -11,3 +11,4 @@ This directory contains genuine, sanitized transcripts and decision records of t
 ## Index of Transcripts
 - `000-phase-0-audit-and-remediation.md`: Forensic audit of initial Phase 0 claims, rejection of synthetic test theatre, and systematic remediation plan.
 - `001-phase-0-live-ollama-evidence.md`: Live Ollama smoke test verification: embeddinggemma 768-dim check, qwen2.5:1.5b structured output, and preamble stripping.
+- `002-phase-0-gateway-and-sdk-evidence.md`: Live containerized Node 22 Pi Agent Gateway build, spike verification, and end-to-end integration with Host Ollama and Python backend.

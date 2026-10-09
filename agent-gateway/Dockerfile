@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies with ignore-scripts as recommended by Pi docs
 COPY package.json ./
-RUN npm install --ignore-scripts
+RUN npm install --ignore-scripts --registry=https://registry.npmmirror.com
 
 COPY tsconfig.json ./
 COPY src/ ./src/

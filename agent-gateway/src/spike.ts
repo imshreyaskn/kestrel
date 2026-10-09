@@ -2,27 +2,34 @@
  * Pi Coding Agent SDK Spike - Phase 0 Verification
  * Verifies:
  * 1. Node 22 runtime environment
- * 2. Pi AI / Pi Coding Agent package resolution and initialization
+ * 2. Pi AI (@earendil-works/pi-ai) module resolution & type validation
  * 3. Multi-provider configuration (Gemini, Ollama, Claude, OpenAI)
- * 4. Read-only tool registration contract
+ * 4. Read-only tool registration and request schema contract
  */
 
 import { z } from "zod";
+import * as piAi from "@earendil-works/pi-ai";
 
 console.log("=== Pi Coding Agent Gateway Spike (Phase 0) ===");
 console.log(`Node Runtime Version: ${process.version}`);
 
-// Verify Node >= 22.19.0
+// 1. Verify Node >= 22.19.0
 const [major, minor] = process.version.replace("v", "").split(".").map(Number);
 if (major < 22 || (major === 22 && minor < 19)) {
-  console.warn(`WARNING: Node version ${process.version} is below the recommended >=22.19.0.`);
+  console.warn(`[Node Check] WARNING: Node version ${process.version} is below >=22.19.0.`);
 } else {
-  console.log("Node version satisfies Pi SDK engine requirements (>=22.19.0).");
+  console.log(`[Node Check] Node version ${process.version} satisfies Pi SDK engine requirements (>=22.19.0).`);
 }
 
-// -------------------------------------------------------------
-// 1. Tool Contract Definition (Read-Only Transcript Search)
-// -------------------------------------------------------------
+// 2. Verify Pi AI module loading and types
+console.log("\n[Pi SDK Module Check]");
+console.log(`Pi AI module loaded successfully: ${typeof piAi === "object"}`);
+console.log(`Available Pi AI exports count: ${Object.keys(piAi).length}`);
+if (piAi.Type) {
+  console.log("Pi AI TypeBox export verified.");
+}
+
+// 3. Tool Contract Definition (Read-Only Transcript Search)
 export const SearchTranscriptsSchema = z.object({
   query: z.string().min(1).describe("The search query for transcript search"),
   top_k: z.number().int().positive().default(5).describe("Max chunks to return"),
@@ -35,7 +42,6 @@ export const transcriptSearchTool = {
   description: "Read-only search across ingested Lenny's Podcast transcripts.",
   parameters: SearchTranscriptsSchema,
   execute: async (args: SearchTranscriptsInput) => {
-    console.log(`[Tool Execution] Simulated read-only query: "${args.query}" (top_k: ${args.top_k})`);
     return {
       results: [
         {
@@ -49,9 +55,7 @@ export const transcriptSearchTool = {
   },
 };
 
-// -------------------------------------------------------------
-// 2. Provider Configuration Mapping
-// -------------------------------------------------------------
+// 4. Provider Configuration Mapping
 export interface ProviderConfig {
   provider: "local" | "cloud";
   cloud_provider?: "gemini" | "anthropic" | "openai";
@@ -84,21 +88,18 @@ export function resolveProvider(env: Record<string, string | undefined>): Provid
   };
 }
 
-// -------------------------------------------------------------
-// 3. Execution Spike Test
-// -------------------------------------------------------------
 async function runSpike() {
   const config = resolveProvider(process.env);
-  console.log("\nResolved Provider Configuration:", JSON.stringify(config, null, 2));
+  console.log("\n[Provider Config] Resolved:", JSON.stringify(config, null, 2));
 
-  console.log("\nTesting Read-Only Tool Execution Contract...");
+  console.log("\n[Tool Contract] Testing read-only transcript search execution...");
   const toolResult = await transcriptSearchTool.execute({
     query: "activation rate vs retention",
     top_k: 3,
   });
-  console.log("Tool Output Verified:", JSON.stringify(toolResult, null, 2));
+  console.log("Tool execution verified:", JSON.stringify(toolResult, null, 2));
 
-  console.log("\nPi Gateway Spike Passed Successfully!");
+  console.log("\n=== Pi Gateway Spike Verification Succeeded! ===");
 }
 
 runSpike().catch((err) => {

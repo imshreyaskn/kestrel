@@ -68,35 +68,53 @@ def find_outermost_json_object(text: str) -> Optional[str]:
 def extract_json_payload(text: str) -> str:
     """
     Extract raw JSON string from LLM output through progressive heuristics:
-    1. Markdown ```json ... ``` code fence
-    2. Markdown ``` ... ``` code fence
-    3. Balanced outermost '{...}' substring
-    4. Fallback to cleaned raw text
+    1. Outermost balanced '{...}' on cleaned text
+    2. Greedy outermost code fence (handles nested fences inside JSON string values)
+    3. Non-greedy code fences (if multiple code blocks exist)
+    4. Fallback to best unparsed candidate for detailed error reporting
     """
     cleaned = clean_llm_text(text)
     if not cleaned:
         raise StructuredExtractionError("Empty LLM output; cannot extract JSON.")
 
-    # 1. Check for ```json ... ``` fence
-    json_fence_match = re.search(r"```json\s*(.*?)\s*```", cleaned, flags=re.DOTALL | re.IGNORECASE)
-    if json_fence_match:
-        candidate = json_fence_match.group(1).strip()
-        if candidate.startswith("{") and candidate.endswith("}"):
-            return candidate
+    candidates: list[str] = []
 
-    # 2. Check for generic ``` ... ``` fence
-    generic_fence_match = re.search(r"```\s*(.*?)\s*```", cleaned, flags=re.DOTALL)
-    if generic_fence_match:
-        candidate = generic_fence_match.group(1).strip()
-        if candidate.startswith("{") and candidate.endswith("}"):
-            return candidate
-
-    # 3. Search for outermost balanced { ... }
+    # 1. Outermost balanced { ... } on the cleaned text
     outer_obj = find_outermost_json_object(cleaned)
     if outer_obj:
-        return outer_obj
+        candidates.append(outer_obj)
 
-    # 4. Fallback to cleaned text directly
+    # 2. Greedy outermost code fence (```json ... ``` or ``` ... ```)
+    # Handles nested code fences inside JSON string values.
+    greedy_fence = re.search(r"```(?:json)?\s*\n?(.*)\n?```", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    if greedy_fence:
+        c = greedy_fence.group(1).strip()
+        candidates.append(c)
+        outer_in_fence = find_outermost_json_object(c)
+        if outer_in_fence:
+            candidates.append(outer_in_fence)
+
+    # 3. Non-greedy fences (in case multiple separate code blocks exist in text)
+    for fence in re.finditer(r"```(?:json)?\s*\n?(.*?)\n?```", cleaned, flags=re.DOTALL | re.IGNORECASE):
+        c = fence.group(1).strip()
+        candidates.append(c)
+        outer = find_outermost_json_object(c)
+        if outer:
+            candidates.append(outer)
+
+    # Return the first candidate that parses as valid JSON
+    for cand in candidates:
+        try:
+            json.loads(cand)
+            return cand
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+    # If no candidate parses cleanly, return the best candidate for diagnosis
+    if outer_obj:
+        return outer_obj
+    if greedy_fence:
+        return greedy_fence.group(1).strip()
     return cleaned
 
 

@@ -93,3 +93,39 @@ def test_missing_required_fields_raises_validation_error():
     with pytest.raises(StructuredExtractionError) as exc_info:
         extract_and_validate(raw, SampleResearchResponse)
     assert "does not conform to schema" in str(exc_info.value)
+
+
+def test_nested_code_fences_with_sql_and_curlys():
+    raw = """
+```json
+{
+  "answer_markdown": "To run this query in PostgreSQL:\\n```sql\\nSELECT * FROM experiments WHERE config = '{}';\\n```\\nCheck the metrics dashboard.",
+  "citations": [{"evidence_id": "E1"}],
+  "insufficient_evidence": false
+}
+```
+"""
+    result = extract_and_validate(raw, SampleResearchResponse)
+    assert "SELECT * FROM experiments" in result.answer_markdown
+    assert result.citations[0].evidence_id == "E1"
+
+
+def test_multiple_code_blocks_in_conversational_response():
+    raw = """
+Here is an example bash script:
+```bash
+curl -X GET http://localhost:8000/api/v1/health
+```
+
+And here is the structured result:
+```json
+{
+  "answer_markdown": "All systems operational.",
+  "citations": [],
+  "insufficient_evidence": false
+}
+```
+"""
+    result = extract_and_validate(raw, SampleResearchResponse)
+    assert result.answer_markdown == "All systems operational."
+    assert result.insufficient_evidence is False
