@@ -120,7 +120,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     req_id = getattr(request.state, "request_id", str(uuid.uuid4()))
     status_code_map = {
         400: ("BAD_REQUEST", False),
+        401: ("UNAUTHORIZED", False),
+        403: ("FORBIDDEN", False),
         404: ("NOT_FOUND", False),
+        409: ("VERSION_CONFLICT", False),
         422: ("VALIDATION_ERROR", False),
         429: ("RATE_LIMITED", True),
         502: ("BAD_GATEWAY", True),

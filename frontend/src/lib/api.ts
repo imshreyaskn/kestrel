@@ -283,6 +283,34 @@ export const api = {
   },
 
   /**
+   * Get messages with resolved citations for a session
+   */
+  async getSessionMessages(sessionId: string): Promise<Array<{
+    id: string;
+    role: string;
+    content: string;
+    status: string;
+    created_at: string;
+    citations?: Array<{
+      evidence_id: string;
+      chunk_id: string;
+      source_id: string;
+      guest: string | null;
+      episode_title: string;
+      episode_url: string | null;
+      excerpt: string;
+      supports?: string;
+    }>;
+  }>> {
+    try {
+      const res = await request<{ messages: any[] }>(`/api/v1/sessions/${sessionId}/messages`);
+      return res.messages || [];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
    * Stream message execution via SSE
    */
   async streamMessage(
@@ -503,6 +531,92 @@ export const api = {
       };
     } catch {
       return null;
+    }
+  },
+
+  /**
+   * Update Growth Brief with optimistic concurrency check
+   */
+  async updateGrowthBrief(
+    briefId: string,
+    updates: {
+      title?: string;
+      data?: Record<string, unknown>;
+    },
+    expectedVersion: number
+  ): Promise<GrowthBriefData | null> {
+    try {
+      const data = await request<{
+        id: string;
+        session_id: string;
+        title: string;
+        version: number;
+        status: string;
+        data: Record<string, unknown>;
+      }>(`/api/v1/growth-briefs/${briefId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: updates.title,
+          data: updates.data,
+          expected_version: expectedVersion,
+        }),
+      });
+
+      return await this.getGrowthBrief(data.id);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        throw new Error('Version conflict: the brief has been modified by another process. Please reload.');
+      }
+      throw err;
+    }
+  },
+
+  /**
+   * Update Artifact with optimistic concurrency check
+   */
+  async updateArtifact(
+    artifactId: string,
+    updates: {
+      title?: string;
+      content?: string;
+    },
+    expectedVersion: number
+  ): Promise<ArtifactData | null> {
+    try {
+      const a = await request<{
+        id: string;
+        session_id: string;
+        kind: 'html' | 'markdown';
+        title: string;
+        content: string;
+        preview_content: string | null;
+        version: number;
+        created_at: string;
+      }>(`/api/v1/artifacts/${artifactId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title: updates.title,
+          content: updates.content,
+          expected_version: expectedVersion,
+        }),
+      });
+
+      return {
+        id: a.id,
+        file: `${a.title.toLowerCase().replace(/\s+/g, '-')}.${a.kind}`,
+        title: a.title,
+        kind: a.kind,
+        src: a.preview_content || a.content,
+        mdHtml: a.kind === 'markdown' ? a.content : undefined,
+        version: a.version,
+        impression: `Plate ${a.version} · ${a.kind.toUpperCase()}`,
+        createdAt: a.created_at,
+      };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        throw new Error('Version conflict: the artifact has been modified. Please reload.');
+      }
+      throw err;
     }
   },
 };

@@ -204,8 +204,8 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
                     suppressContentEditableWarning
                     spellCheck="false"
                   >
-                    New workspaces that start from a guided template complete a first project
-                    within 7 days more often than those given a blank canvas.
+                    {brief.sections[3]?.experiment?.hypothesis ||
+                      'New workspaces that start from a guided template complete a first project within 7 days more often than those given a blank canvas.'}
                   </div>
                 </dd>
               </div>
@@ -218,8 +218,8 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
                     suppressContentEditableWarning
                     spellCheck="false"
                   >
-                    Replace the post-signup checklist with a template gallery step; defer all other
-                    setup until the first project exists.
+                    {brief.sections[3]?.experiment?.change ||
+                      'Replace the post-signup checklist with a template gallery step; defer all other setup until the first project exists.'}
                   </div>
                 </dd>
               </div>
@@ -232,7 +232,8 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
                     suppressContentEditableWarning
                     spellCheck="false"
                   >
-                    New self-serve workspaces, 50 / 50 split, two weeks of signups.
+                    {brief.sections[3]?.experiment?.audience ||
+                      'New self-serve workspaces, 50 / 50 split, two weeks of signups.'}
                   </div>
                 </dd>
               </div>
@@ -245,8 +246,8 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
                     suppressContentEditableWarning
                     spellCheck="false"
                   >
-                    % of new workspaces completing a first project within 7 days — baseline ≈ 23%
-                    (user-supplied).
+                    {brief.sections[3]?.experiment?.primaryMetric ||
+                      '% of new workspaces completing a first project within 7 days — baseline ≈ 23% (user-supplied).'}
                   </div>
                 </dd>
               </div>
@@ -259,7 +260,8 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
                     suppressContentEditableWarning
                     spellCheck="false"
                   >
-                    Week-4 retention by cohort · support contacts per signup.
+                    {brief.sections[3]?.experiment?.guardrails ||
+                      'Week-4 retention by cohort · support contacts per signup.'}
                   </div>
                 </dd>
               </div>
@@ -272,8 +274,8 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
                     suppressContentEditableWarning
                     spellCheck="false"
                   >
-                    Ship at ≥ +5 points absolute with no guardrail regression; iterate between 0
-                    and 5; revert if retention drops.
+                    {brief.sections[3]?.experiment?.decisionRule ||
+                      'Ship at ≥ +5 points absolute with no guardrail regression; iterate between 0 and 5; revert if retention drops.'}
                   </div>
                 </dd>
               </div>

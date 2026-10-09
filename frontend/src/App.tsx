@@ -102,9 +102,9 @@ export const App: React.FC = () => {
   // Initialize Providers & Backend Health
   useEffect(() => {
     api.getProviders().then(setProviders);
-    api.getConfig().then((cfg) => {
-      if (cfg) {
-        // Backend live
+    api.getSessions().then((loaded) => {
+      if (loaded && loaded.length > 0) {
+        setSessions(loaded);
       }
     });
   }, []);
@@ -136,15 +136,76 @@ export const App: React.FC = () => {
   }, [view]);
 
   // Session Switching
-  const handleSelectSession = useCallback((sessionId: string) => {
-    if (isComposing) {
-      showToast('Composing — strike the run first');
-      return;
-    }
-    setActiveSessionId(sessionId);
-    setView('manuscript');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [isComposing, showToast]);
+  const handleSelectSession = useCallback(
+    async (sessionId: string) => {
+      if (isComposing) {
+        showToast('Composing — strike the run first');
+        return;
+      }
+      setActiveSessionId(sessionId);
+      setView('manuscript');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      // Fetch message history for live sessions if entries are empty
+      const currentSession = sessions.find((s) => s.id === sessionId);
+      if (currentSession && currentSession.entries.length === 0 && currentSession.kind === 'live') {
+        const msgs = await api.getSessionMessages(sessionId);
+        if (msgs && msgs.length > 0) {
+          const loadedEntries: ManuscriptEntry[] = msgs.map((m) => {
+            if (m.role === 'user') {
+              return {
+                id: m.id,
+                kind: 'query',
+                queryText: m.content,
+                queryMeta: {
+                  time: new Date(m.created_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                },
+                createdAt: m.created_at,
+              };
+            }
+
+            const citations: Citation[] = (m.citations || []).map((c, idx) => ({
+              id: `sn-${sessionId}-${c.evidence_id}`,
+              refIndex: idx + 1,
+              speaker: c.guest || 'Lenny Guest',
+              episodeTitle: c.episode_title,
+              episodeUrl: c.episode_url || undefined,
+              quote: c.excerpt,
+              provenanceStamp: `[${c.evidence_id}] ${c.supports || 'Evidence'}`,
+              chunkId: c.chunk_id,
+            }));
+
+            return {
+              id: m.id,
+              kind: 'answer',
+              answerData: {
+                lead: m.content.split('\n\n')[0] || m.content,
+                sections: [
+                  {
+                    rn: 'I',
+                    h: 'Synthesized Evidence',
+                    bodyHtml: m.content,
+                    citedRefIndices: citations.map((c) => c.refIndex),
+                  },
+                ],
+                stamp: `Archived Entry — ${citations.length} citations verified`,
+              },
+              citations,
+              createdAt: m.created_at,
+            };
+          });
+
+          setSessions((prev) =>
+            prev.map((s) => (s.id === sessionId ? { ...s, entries: loadedEntries } : s))
+          );
+        }
+      }
+    },
+    [isComposing, sessions, showToast]
+  );
 
   const handleNewDossier = useCallback(() => {
     if (isComposing) {
@@ -551,7 +612,7 @@ export const App: React.FC = () => {
 
   // Submit Prompt from Frontmatter or ComposerBar
   const handleSubmitQuery = useCallback(
-    (
+    async (
       text: string,
       mode: ComposeMode,
       format: ArtifactKind,
@@ -559,22 +620,9 @@ export const App: React.FC = () => {
     ) => {
       let currentSession = activeSession;
       if (!currentSession) {
-        // Create new session
+        // Create new session via backend
         const titleSnippet = text.length > 50 ? `${text.slice(0, 48)}…` : text;
-        const newSess: SessionData = {
-          id: 'live-' + Date.now(),
-          num: String(sessions.length + 1).padStart(2, '0'),
-          title: titleSnippet,
-          meta: 'query · new',
-          kind: 'live',
-          entries: [],
-          artifacts: [],
-          briefCount: 0,
-          noteSeq: 0,
-          plateSeq: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
+        const newSess = await api.createSession(titleSnippet, activeProvider);
         currentSession = newSess;
         setSessions((prev) => [newSess, ...prev]);
         setActiveSessionId(newSess.id);
@@ -607,7 +655,7 @@ export const App: React.FC = () => {
 
       runComposingPipeline(currentSession, text, mode, format);
     },
-    [activeSession, sessions.length, runComposingPipeline]
+    [activeSession, activeProvider, runComposingPipeline]
   );
 
   // States Tray Handler
@@ -870,7 +918,43 @@ export const App: React.FC = () => {
         isOpen={isBriefOpen}
         onClose={() => setIsBriefOpen(false)}
         brief={activeBrief || INITIAL_GROWTH_BRIEF}
-        onSaveImpression={() => {
+        onSaveImpression={async () => {
+          if (activeBrief && activeBrief.id && activeBrief.id !== 'brief-1') {
+            try {
+              const saved = await api.updateGrowthBrief(
+                activeBrief.id,
+                {
+                  title: activeBrief.title,
+                  data: {
+                    problem: activeBrief.sections[0]?.content,
+                    recommendation: activeBrief.sections[2]?.content,
+                    assumptions: activeBrief.sections[2]?.assumptions?.split('\n') || [],
+                    experiment: {
+                      hypothesis: activeBrief.sections[3]?.experiment?.hypothesis,
+                      change: activeBrief.sections[3]?.experiment?.change,
+                      segment: activeBrief.sections[3]?.experiment?.audience,
+                      success_metric: activeBrief.sections[3]?.experiment?.primaryMetric,
+                      guardrail_metric: activeBrief.sections[3]?.experiment?.guardrails,
+                      decision_rule: activeBrief.sections[3]?.experiment?.decisionRule,
+                    },
+                  },
+                },
+                activeBrief.version
+              );
+              if (saved) {
+                setActiveBrief(saved);
+                setSessions((prev) =>
+                  prev.map((s) => (s.id === saved.sessionId ? { ...s, activeBrief: saved } : s))
+                );
+                showToast(`Second impression bound — Version ${saved.version}`);
+                announce(`Brief saved — version ${saved.version}.`);
+                return;
+              }
+            } catch (err: any) {
+              showToast(err.message || 'Failed to save impression');
+              return;
+            }
+          }
           showToast('Second impression bound');
           announce('Brief saved — second impression.');
         }}

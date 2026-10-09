@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArtifactData } from '../types';
 import { CSP_HEADER } from '../lib/demoData';
+import { MarkdownViewer } from './MarkdownViewer';
 
 interface PlateViewerModalProps {
   isOpen: boolean;
@@ -164,46 +165,7 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
             srcDoc={safeSrcDoc}
           />
         ) : (
-          <div className="pv-doc">
-            <h1>Activation without retention damage</h1>
-            <p className="md-i">
-              A research memo assembled from four episodes of Lenny’s Podcast. Every claim maps to a
-              cited transcript passage.
-            </p>
-            <h2>What the experts converge on</h2>
-            <ol>
-              <li>
-                <strong>Speed toward the “aha.”</strong> Profile your most delighted users, find the
-                moment delight happens, and rebuild onboarding so everyone gets there sooner.
-                Activation is time-to-that-behavior — not steps completed.
-              </li>
-              <li>
-                <strong>Flatten the curve first.</strong> If retention doesn’t flatten, acquisition
-                is filling a leaking bucket. Fix the curve before the funnel.
-              </li>
-              <li>
-                <strong>Make the first win the user’s win.</strong> A first lesson, a first project,
-                a first streak — the outcome belongs to the user, not the checklist.
-              </li>
-              <li>
-                <strong>In PLG, value reached is expansion begun.</strong> Users who reach value
-                expand themselves; sales follows usage.
-              </li>
-            </ol>
-            <h2>Where the evidence is thin</h2>
-            <p>
-              No guest shares a controlled experiment pitting an activation change directly against
-              retention. Treat the pattern as expert consensus, not causal proof — and guard
-              retention in whatever you test.
-            </p>
-            <h2>Sources</h2>
-            <p className="md-i">
-              Superhuman — How Superhuman Built an Engine for Growth (Rahul Vohra) · Retention: The
-              Core of Growth (Casey Winters) · Duolingo — How Duolingo Reignited User Growth (Jorge
-              Mazal &amp; Jackson Gates) · How B2B Companies Grow with a Product-Led Motion (Elena
-              Verna)
-            </p>
-          </div>
+          <MarkdownViewer content={artifact.src} />
         )}
       </div>
     </div>
