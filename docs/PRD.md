@@ -115,9 +115,9 @@ flowchart LR
     P4 --> P5[Phase 5: Hardening & Handoff]
 ```
 
-* **Phase 0 (Reconnaissance & Spike):** Toolchain check, live host Ollama verified (768-dim embeddings & Qwen 1.5B structured JSON), Pi gateway scaffolding, ADR 001, robust parser unit tests. (Status: **PASSED — Real Evidence Verified**)
-* **Phase 1 (Foundation):** Monorepo structure, Docker Compose (`db`, `api`, `agent-gateway`, `frontend`), FastAPI health/schemas, PostgreSQL+pgvector Alembic migrations, Pi gateway skeleton.
-* **Phase 2 (Knowledge Base):** Transcript sync from `lennys-podcast-transcripts`, YAML parsing, chunking, embeddings, pgvector + tsvector hybrid query, RRF ranking, citation mapping.
-* **Phase 3 (Agent Workflows & Skills):** Multi-provider routing (Gemini, Ollama, Claude), Grounded Research workflow, Growth Brief persistence, Ship 30 for 30 essay skill.
-* **Phase 4 (Workbench UI & Artifacts):** Editorial Research Studio frontend, session manager, split-pane artifact viewer, sandboxed iframe rendering, SSE streaming parser.
-* **Phase 5 (Hardening & Delivery):** Automated test suite, manual UI test plan, sanitized transcripts in `agent-transcripts/`, fresh-clone rehearsal, documentation finalization.
+* **Phase 0 (Reconnaissance & Spike):** Toolchain check, live host Ollama verified (768-dim embeddings & Qwen 1.5B structured JSON), Pi gateway scaffolding, ADR 001, robust parser unit tests. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 001–004)
+* **Phase 1 (Foundation):** Monorepo structure, Docker Compose (`db`, `api`, `agent-gateway`, `frontend`), FastAPI health/schemas, PostgreSQL+pgvector Alembic migrations, demo user seed, strictly typed error envelopes. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 005)
+* **Phase 2 (Knowledge Base):** Transcript sync from `lennys-podcast-transcripts`, YAML parsing, chunking, embeddings, pgvector + tsvector hybrid query, Cormack RRF ranking, citation mapping, 20-case retrieval benchmark. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 006)
+* **Phase 3 (Agent Workflows & Skills):** Multi-provider routing (Gemini, Ollama, Claude), Grounded Research workflow, Growth Brief persistence with optimistic versioning, Ship 30 for 30 essay skill, nh3 HTML sanitizer and CSP isolation, 95 passing tests. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 007)
+* **Phase 4 (Workbench UI & Artifacts):** Editorial Research Studio (Dossier) visual language, session manager, sandboxed iframe Plate Viewer, zero-dependency MarkdownViewer, dynamic 7-section Growth Brief editor with 409 conflict detection, 99 passing tests with integrated E2E test suite. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 008)
+* **Phase 5 (Hardening & Delivery):** Full test suite, static type checking (69 source files), zero lint errors (ruff), manual evaluation test plan (`docs/manual-test-plan.md`), system architecture (`docs/architecture.md`), design system (`docs/design.md`), sanitized transcripts in `agent-transcripts/`. (Status: ✅ **COMPLETED**)
