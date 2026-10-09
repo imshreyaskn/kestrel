@@ -115,7 +115,7 @@ flowchart LR
     P4 --> P5[Phase 5: Hardening & Handoff]
 ```
 
-* **Phase 0 (Reconnaissance & Spike):** Toolchain check, Pi SDK multi-provider architecture lock, ADR 001, baseline spike. (Status: **IN_PROGRESS — Remediating Gates**)
+* **Phase 0 (Reconnaissance & Spike):** Toolchain check, live host Ollama verified (768-dim embeddings & Qwen 1.5B structured JSON), Pi gateway scaffolding, ADR 001, robust parser unit tests. (Status: **PASSED — Real Evidence Verified**)
 * **Phase 1 (Foundation):** Monorepo structure, Docker Compose (`db`, `api`, `agent-gateway`, `frontend`), FastAPI health/schemas, PostgreSQL+pgvector Alembic migrations, Pi gateway skeleton.
 * **Phase 2 (Knowledge Base):** Transcript sync from `lennys-podcast-transcripts`, YAML parsing, chunking, embeddings, pgvector + tsvector hybrid query, RRF ranking, citation mapping.
 * **Phase 3 (Agent Workflows & Skills):** Multi-provider routing (Gemini, Ollama, Claude), Grounded Research workflow, Growth Brief persistence, Ship 30 for 30 essay skill.
