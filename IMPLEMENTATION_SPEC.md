@@ -142,23 +142,22 @@ Scope boundaries are not permission to skip mandatory requirements. Expand imple
 - Full-text search via PostgreSQL `tsvector` and semantic retrieval via pgvector; combine candidates in the application.
 
 **Agent runtime**
-- Standardized on **Claude Agent SDK in pure Python**, running in-process within the FastAPI backend service (`backend/app/agent/`).
-- Direct integration: no auxiliary Node.js/TypeScript gateway service, no inter-process network hops, and no secondary container.
-- Provider abstraction:
-  - **Local mode**: Ollama via its host endpoint (`http://host.docker.internal:11434`), supporting local models (e.g. `qwen3:4b`, `llama3.2`).
-  - **Cloud mode**: Anthropic API (`claude-sonnet-latest` / Claude 3.7).
-- FastAPI retains authoritative ownership of session identity, PostgreSQL persistence, retrieval execution, citation validation, and security boundaries. The agent runtime is invoked with bounded, typed context and outputs validated structures.
+- Standardized on **Pi Coding Agent SDK (`https://pi.dev`)** hosted within a lightweight Node.js/TypeScript gateway service (`agent-gateway/`).
+- Multi-provider routing:
+  - **Google Gemini**: Native support via `GEMINI_API_KEY` (`gemini-2.0-flash` / `gemini-1.5-flash`), enabling zero-cost development and testing.
+  - **Local Ollama**: Native support via OpenAI-compatible endpoint on host (`http://host.docker.internal:11434`), supporting local models (e.g. `qwen2.5:1.5b`, `qwen3:4b`). Mandatory for submitted demo.
+  - **Anthropic Claude & OpenAI**: Native support via `ANTHROPIC_API_KEY` (`claude-sonnet-latest`) and `OPENAI_API_KEY` (`gpt-4o`), enabling evaluators to run their preferred cloud models with zero code changes.
+- FastAPI retains authoritative ownership of session identity, PostgreSQL persistence, hybrid retrieval, citation validation, and security boundaries. The gateway acts as a thin execution engine without database access.
 - Bounded context: Pass only the authorized session's recent context window and retrieved evidence chunks (`[E1]`, `[E2]`). PostgreSQL remains the sole source of truth.
-- **Single runtime architecture**: Locked via ADR 001. No multi-agent swarms, no Redis, no competing SDK runtimes.
+- **Architecture Locked**: Formally locked via ADR 001.
 
 ### 3.2 Model configuration
 
 Provider enum:
-
 - `local` → Ollama host URL + configured local chat model.
-- `cloud` → Anthropic API + configured cloud model.
+- `cloud` → Configured cloud provider (`gemini`, `anthropic`, or `openai`).
 
-Never accept an arbitrary API base URL or secret from the browser. Browser sends a provider enum. Backend maps it to allowlisted configuration. A requested model override is allowed only if its ID is in server configuration.
+Never accept an arbitrary API base URL or secret from the browser. Browser sends a provider enum. Backend maps it to allowlisted configuration.
 
 Suggested `.env.example` values:
 
@@ -167,15 +166,23 @@ APP_ENV=development
 APP_LOG_LEVEL=INFO
 APP_BASE_URL=http://localhost:5173
 API_PORT=8000
+AGENT_GATEWAY_PORT=8010
 DATABASE_URL=postgresql+asyncpg://lenny:lenny_dev_only@db:5432/lenny_growth
 DEMO_USER_ID=00000000-0000-4000-8000-000000000001
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-OLLAMA_CHAT_MODEL=qwen3:4b
-OLLAMA_EMBEDDING_MODEL=embeddinggemma
-EMBEDDING_DIMENSIONS=768
-DEFAULT_PROVIDER=local
+AGENT_GATEWAY_URL=http://agent-gateway:8010
+INTERNAL_SERVICE_TOKEN=replace-with-a-local-random-value
+DEFAULT_PROVIDER=cloud
+DEFAULT_CLOUD_PROVIDER=gemini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.0-flash
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=claude-sonnet-latest
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_CHAT_MODEL=qwen2.5:1.5b
+OLLAMA_EMBEDDING_MODEL=embeddinggemma
+EMBEDDING_DIMENSIONS=768
 RETRIEVAL_TOP_K=8
 RETRIEVAL_MIN_SCORE=0.25
 MAX_CONTEXT_MESSAGES=12
@@ -206,9 +213,9 @@ flowchart TD
   API --> DB[(PostgreSQL + pgvector)]
   API --> RET[Hybrid Retrieval Service]
   RET --> DB
-  API --> AG[In-Process Claude Agent Runtime]
+  API -->|typed generation request| AG[Pi Agent Gateway]
   AG --> LOCAL[Ollama on host]
-  AG --> CLOUD[Anthropic API]
+  AG --> CLOUD[Cloud Providers: Gemini / Claude / OpenAI]
   API --> VALID[Output + citation validation]
   VALID --> DB
   VALID --> UI
@@ -251,12 +258,22 @@ kestrel/
 │   │   ├── services/              # session, message, brief, artifact, provider
 │   │   ├── retrieval/             # embeddings, keyword, vector, ranking
 │   │   ├── ingestion/             # sync, parse, chunk, index
-│   │   ├── agent/                 # Claude Agent SDK runtime, providers, skills
+│   │   ├── agent_client/          # typed gateway client, skill loader, prompts
 │   │   └── security/              # artifact preview policy and validators
 │   ├── migrations/
 │   ├── tests/unit/
 │   ├── tests/integration/
 │   └── pyproject.toml
+├── agent-gateway/
+│   ├── src/server.ts
+│   ├── src/config.ts
+│   ├── src/schemas.ts
+│   ├── src/runtime/pi-runtime.ts
+│   ├── src/providers.ts
+│   ├── src/skills.ts
+│   ├── src/logging.ts
+│   ├── tests/
+│   └── package.json
 ├── runtime-skills/
 │   └── ship-30-for-30/SKILL.md
 ├── scripts/
@@ -512,13 +529,13 @@ The UI shows a visible “working” state and stage changes. Do not show a mode
 
 A browser disconnect should request cancellation where supported. If cancellation propagation from frontend through FastAPI to the agent cannot be reliably implemented within the available time, retain safe server-side timeout and mark the cancellation limitation in docs rather than claiming true cancellation.
 
-### 6.6 In-process agent runtime contract (Python Claude Agent SDK)
+### 6.6 Internal gateway contract (Pi Coding Agent SDK)
 
-The agent runtime executes directly in-process within FastAPI (`backend/app/agent/`). There is no network overhead, no separate microservice port, and no auxiliary authorization token.
+Only the FastAPI service may call the agent gateway (`http://agent-gateway:8010`). It is not published to the host. Communication is authenticated via a shared internal token (`INTERNAL_SERVICE_TOKEN`) and enforces request size/time limits.
 
-Input parameters to the agent invocation:
+Request fields:
 
-- `request_id`, `session_id`, `mode`, `provider`;
+- `request_id`, `session_id`, `mode`, `provider` (`local` or `cloud`), `cloud_provider` (`gemini`, `anthropic`, `openai`);
 - `model_id` from server allowlist;
 - bounded `conversation_context` with explicit role/content entries;
 - `current_user_message`;
@@ -527,12 +544,12 @@ Input parameters to the agent invocation:
 - output contract version.
 
 Security and sandboxing:
-- The agent execution harness must NOT have arbitrary shell paths, filesystem access, or external web browsing tools.
-- Only registered, read-only tools are allowed (e.g. focused transcript retrieval refinement).
-- Initial retrieval is performed deterministically in FastAPI before invoking the agent, ensuring small local models succeed even without multi-turn tool calling.
+- The Pi runtime must not accept arbitrary shell paths, tool names, provider URLs, or API keys from client requests.
+- Disable Pi default shell/file tools. Register only the minimal custom tools actually needed (transcript search is read-only).
+- Initial retrieval is performed deterministically in FastAPI before invoking the gateway so that local small models succeed reliably without multi-turn tool calling.
+- The gateway can optionally request a second search through a constrained internal callback function if tested.
 
-Output fields include:
-- `request_id`, provider/model used, final structured response matching the workflow mode schema, latency/token usage metadata, and standardized error envelopes. Never leak credentials or raw stack traces.
+Response fields include request ID, provider/model used, final structured response, latency/token metadata, and a normalized error category. Never return provider secrets or raw stack traces.
 
 ---
 
@@ -886,7 +903,7 @@ Use a test PostgreSQL/pgvector instance or CI service. SQLite is not an adequate
 - DB outage/failure cannot return success-shaped completed messages;
 - artifact and Growth Brief ownership checks.
 
-### 12.3 In-process agent runtime tests (Python)
+### 12.3 Gateway tests (Pi Coding Agent)
 
 - Model/provider allowlist.
 - Ollama base URL and cloud provider configuration.
@@ -957,12 +974,13 @@ Record actual pass/fail/blocker, not only the planned outcome.
 ### 13.1 Docker topology
 
 - `db`: PostgreSQL + pgvector image, persistent named volume, health check.
-- `api`: FastAPI (Python 3.12+), internal `DATABASE_URL`, in-process Claude Agent SDK runtime; runs migrations and serves `/api/v1`.
+- `api`: FastAPI (Python 3.12+), internal `DATABASE_URL`, internal gateway URL (`http://agent-gateway:8010`); runs migrations and serves `/api/v1`.
+- `agent-gateway`: Node.js/TypeScript runtime using Pi Coding Agent SDK; internal Docker network only, no host-published port.
 - `frontend`: production build served by Nginx or Vite preview, proxy `/api` to FastAPI and disable proxy buffering for SSE. Publish only to loopback by default (`127.0.0.1:5173:80`).
 - Ollama runs on the host OS for easiest GPU access. Container services address it as `host.docker.internal:11434`; add `host-gateway` mapping where required (especially Linux). Document Windows/Docker Desktop behavior.
 - No Redis or separate vector database.
 
-Don't publish PostgreSQL port by default. A dev-only compose profile can expose local DB if external debugging needs it.
+Don't publish PostgreSQL or agent-gateway ports by default. A dev-only compose profile can expose local DB if external debugging needs it.
 
 ### 13.2 Expected user setup
 
@@ -1078,7 +1096,7 @@ The deadline is close; parallelize isolated implementation with Antigravity, but
 - typed settings, error envelope, correlation IDs and JSON logs;
 - PostgreSQL/pgvector Compose service, Alembic first migration, seed demo user;
 - FastAPI health/config endpoints;
-- in-process agent runtime module scaffolding and typed request/response schemas;
+- Pi gateway health and typed request/response contract;
 - frontend shell and design tokens;
 - CI/basic checks.
 

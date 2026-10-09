@@ -1,44 +1,46 @@
-# ADR 001: Python-Native In-Process Agent Runtime (Claude Agent SDK)
+# ADR 001: Multi-Provider Agent Runtime via Pi Coding Agent SDK
 
 ## Status
 **Accepted** (Codename: Kestrel)
 
 ## Context
 The external assignment contract mandates:
-> *"Agent layer uses either the Claude Agent SDK or Pi Coding Agent."*
+> *"3.1 Agent integration: Build the agent layer using the Anthropic Claude Agent SDK or Pi Coding Agent."*
+> *"3.2 Flexible LLM configuration: Create a configuration layer that allows the evaluator to switch the underlying model without changing application code: Cloud LLM (such as Anthropic Claude or OpenAI) and Local LLM (mandatory for demo via Ollama)."*
 
-The original candidate design proposed hosting the Pi Coding Agent SDK in a dedicated Node.js/TypeScript `agent-gateway` container to interface with local Ollama via OpenAI compatibility and cloud Anthropic.
-
-However, introducing a secondary Node.js container adds substantial friction:
-1. **Multi-language runtime complexity:** Requires maintaining Node/TypeScript toolchains, lockfiles, and container builds alongside Python.
-2. **Network overhead & microservice sprawl:** Adds an internal HTTP hop, auxiliary service tokens, extra failure modes, and complicates Server-Sent Events (SSE) streaming back to the client.
-3. **Violates simplicity principles:** [AGENTS.md](../../AGENTS.md) instructs:
-   > *"Prefer the simplest architecture that meets the contract. No multi-agent orchestration, Redis, queues, extra vector database, microservices... unless a demonstrated requirement justifies it."*
+We evaluated two compliant approaches:
+1. **Anthropic Claude Agent SDK:** Pure Python, but inherently vendor-locked to Anthropic. It does not natively support Google Gemini (which is our primary free developer API key) or local Ollama without brittle external translation proxies.
+2. **Pi Coding Agent SDK (`https://pi.dev`):** Specifically architected for multi-model coding and tool-calling agents. It has native first-class support for:
+   - **Google Gemini** (allowing zero-cost local development with free Gemini 2.0 / 1.5 Flash API keys)
+   - **Ollama** (for the mandatory local offline demo)
+   - **Anthropic Claude & OpenAI** (for external evaluators to test using their own keys)
 
 ## Decision
-We standardize on the **Claude Agent SDK in pure Python**, running **in-process** directly within the FastAPI application (`backend/app/agent/`).
+We standardize on the **Pi Coding Agent SDK** hosted within a lightweight Node.js/TypeScript gateway service (`agent-gateway/`), orchestrated deterministically by the FastAPI application.
 
-1. **Eliminate the Node.js Gateway:** The `agent-gateway/` directory and container service are removed.
-2. **Topology:** Docker Compose is reduced to a lean, 3-service topology:
+1. **Architecture & Service Boundaries:**
+   - **FastAPI (`backend/`):** Authoritative owner of session identity, PostgreSQL persistence, hybrid retrieval (pgvector + tsvector), citation mapping, and security boundaries.
+   - **Pi Agent Gateway (`agent-gateway/`):** Thin execution runtime implementing the agent tool loop and multi-provider routing via the Pi SDK.
+2. **Topology:** 4-service Docker Compose topology:
    - `db`: PostgreSQL 16 + pgvector
-   - `api`: FastAPI (Python 3.12+) including in-process agent runtime, retrieval, and ingestion
+   - `api`: FastAPI (Python 3.12+)
+   - `agent-gateway`: Node.js (Pi Coding Agent SDK runtime)
    - `frontend`: React / TypeScript / Vite / Tailwind
-3. **Provider Support:**
-   - **Local Inference:** Direct Python HTTP integration with host Ollama (`http://host.docker.internal:11434`), supporting local models (e.g. `qwen3:4b`, `llama3.2`).
-   - **Cloud Inference:** Native Anthropic API integration via Claude Agent SDK (`claude-sonnet-latest` / Claude 3.7).
-4. **Architectural Guardrails:**
-   - FastAPI retains authoritative ownership of session identity, PostgreSQL persistence, retrieval execution, citation mapping, and security boundaries.
-   - The agent harness executes with read-only retrieval tools and bounded context. It does not have arbitrary filesystem, shell, or web access.
+3. **Multi-Cloud & Local Provider Flexibility:**
+   - **Gemini:** `GEMINI_API_KEY` (developer free tier)
+   - **Ollama:** `OLLAMA_BASE_URL` (mandatory local demo)
+   - **Claude:** `ANTHROPIC_API_KEY` (evaluator option)
+   - **OpenAI:** `OPENAI_API_KEY` (evaluator option)
+   Evaluator or developer can switch providers instantly in `.env` or via UI without touching code.
 
 ## Consequences
 
 ### Positive
-- **Unified Language:** The entire backend, retrieval pipeline, database migrations, and agent orchestration are written in Python.
-- **Simpler DevEx & Deployment:** One less container to build, run, and monitor.
-- **Lower Latency:** Eliminates inter-process serialization overhead for SSE streaming.
-- **Direct Testing:** Agent workflows and failure modes can be tested directly with `pytest` without mocking cross-container HTTP endpoints.
-- **Contract Compliant:** Directly fulfills the assignment requirement to use the Claude Agent SDK.
+- **100% Contract Compliance:** Formally fulfills the assignment requirement to integrate the Pi Coding Agent SDK (`https://pi.dev`).
+- **Free Development:** Enables full development and end-to-end testing with Google Gemini's free tier.
+- **Universal Provider Support:** Native switching between Gemini, Ollama, Claude, and OpenAI with zero code changes.
+- **Clear Separation of Concerns:** Agent inference is decoupled from database storage and business logic.
 
-### Risks and Mitigations
-- **Risk:** Local small models (e.g. Qwen 4B) may occasionally output malformed structured JSON.
-- **Mitigation:** FastAPI performs initial hybrid retrieval deterministically before calling the model, and wraps structured output extraction in Pydantic v2 schemas with a single bounded repair attempt before reporting insufficient evidence or validation errors.
+### Mitigations for Dual-Runtime
+- The gateway remains thin: zero direct database access, zero filesystem tools, and no independent state. All persistent data lives in PostgreSQL managed by FastAPI.
+- Internal communication between FastAPI and the gateway uses typed JSON schemas and internal Docker networking.
