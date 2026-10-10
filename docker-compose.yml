@@ -6,8 +6,8 @@ services:
       POSTGRES_USER: lenny
       POSTGRES_PASSWORD: lenny_dev_only
       POSTGRES_DB: lenny_growth
-    ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+    # Spec §13.1: PostgreSQL is not published to the host by default.
+    # For local debugging run: docker compose -f docker-compose.yml -f compose.dev.yml up
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,14 +26,19 @@ services:
       PORT: 8010
       NODE_ENV: development
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:1.5b}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-replace-with-a-long-random-local-token}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-latest}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - "8010:8010"
+    # Spec §13.1: the gateway is an internal service with no host-published
+    # port. Diagnostics go through the API readiness probe (which checks the
+    # gateway) or the opt-in compose.dev.yml override.
     restart: unless-stopped
 
   api:
@@ -42,21 +47,35 @@ services:
       dockerfile: Dockerfile
     container_name: kestrel-api
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql+asyncpg://lenny:lenny_dev_only@db:5432/lenny_growth
+      DEMO_USER_ID: ${DEMO_USER_ID:-00000000-0000-4000-8000-000000000001}
       AGENT_GATEWAY_URL: http://agent-gateway:8010
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:1.5b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-replace-with-a-long-random-local-token}
-      DEFAULT_PROVIDER: local
-      DEFAULT_CLOUD_PROVIDER: gemini
+      DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-local}
+      DEFAULT_CLOUD_PROVIDER: ${DEFAULT_CLOUD_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-latest}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-8}
+      RETRIEVAL_MIN_SCORE: ${RETRIEVAL_MIN_SCORE:-0.25}
+      MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-12}
+      GENERATION_TIMEOUT_SECONDS: ${GENERATION_TIMEOUT_SECONDS:-120}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./runtime-skills:/app/runtime-skills:ro
       - ./alembic.ini:/app/alembic.ini:ro
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -69,8 +88,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: kestrel-frontend
+    # Spec §13.1: publish the frontend to loopback only by default.
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     depends_on:
       - api
     restart: unless-stopped

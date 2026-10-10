@@ -12,7 +12,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.models.entities import Artifact
+from backend.app.models.entities import Artifact, ChatSession
 from backend.app.security.sanitizer import build_sandboxed_preview_html
 
 
@@ -59,9 +59,18 @@ class ArtifactService:
     async def get_artifact(
         db: AsyncSession,
         artifact_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
     ) -> Artifact | None:
-        """Fetch artifact by ID."""
+        """Fetch artifact by ID.
+
+        When user_id is supplied, the artifact is only returned when its
+        owning session belongs to that user (spec §6.2: ownership check).
+        """
         stmt = select(Artifact).where(Artifact.id == artifact_id)
+        if user_id is not None:
+            stmt = stmt.join(ChatSession, Artifact.session_id == ChatSession.id).where(
+                ChatSession.user_id == user_id
+            )
         result = await db.execute(stmt)
         return result.scalars().first()
 
@@ -69,15 +78,17 @@ class ArtifactService:
     async def update_artifact(
         db: AsyncSession,
         artifact_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
         content: str | None = None,
         title: str | None = None,
         expected_version: int | None = None,
     ) -> Artifact:
         """
-        Update artifact content or title with optimistic version checks.
+        Update artifact content or title with optimistic version checks and
+        (when user_id is supplied) session ownership enforcement.
         Recomputes preview_content if content is modified.
         """
-        artifact = await ArtifactService.get_artifact(db, artifact_id)
+        artifact = await ArtifactService.get_artifact(db, artifact_id, user_id=user_id)
         if not artifact:
             raise KeyError(f"Artifact {artifact_id} not found")
 

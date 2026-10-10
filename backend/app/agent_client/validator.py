@@ -16,6 +16,24 @@ from backend.app.core.json_extractor import (
     extract_json_payload,
 )
 
+# Ship 30 for 30 essay bounds per IMPLEMENTATION_SPEC.md §8.4 and
+# runtime-skills/ship-30-for-30/SKILL.md: target 1,250 words, accepted
+# first-draft range 1,150–1,350 words.
+ESSAY_MIN_WORDS = 1150
+ESSAY_MAX_WORDS = 1350
+
+
+class EssayLengthError(StructuredExtractionError):
+    """Raised when a generated essay falls outside the accepted word range."""
+
+    def __init__(self, actual_words: int) -> None:
+        self.actual_words = actual_words
+        super().__init__(
+            f"Essay length {actual_words} words is outside the accepted "
+            f"range of {ESSAY_MIN_WORDS}-{ESSAY_MAX_WORDS} words "
+            f"(target ~1,250)."
+        )
+
 
 class CitationItem(BaseModel):
     evidence_id: str
@@ -135,7 +153,9 @@ def validate_agent_response(
         if not isinstance(payload, dict):
             raise StructuredExtractionError("Extracted JSON root must be an object")
     except json.JSONDecodeError as exc:
-        raise StructuredExtractionError(f"Failed to parse extracted JSON: {exc}") from exc
+        raise StructuredExtractionError(
+            f"Failed to parse extracted JSON: {exc}"
+        ) from exc
 
     if mode == "growth_brief":
         raw_citations = payload.get("citations", [])
@@ -178,7 +198,12 @@ def validate_agent_response(
         cleaned_citations = filter_valid_citations(raw_citations, valid_evidence_ids)
         essay_text = str(payload.get("essay_markdown", "")).strip()
         actual_wc = count_words(essay_text)
-        approx_wc = int(payload.get("approximate_word_count", actual_wc))
+        approx_wc = int(payload.get("approximate_word_count", actual_wc) or actual_wc)
+
+        # Spec §8.4 word-count gate: reject drafts outside 1,150–1,350 words
+        # rather than persisting an essay that violates the skill contract.
+        if not (ESSAY_MIN_WORDS <= actual_wc <= ESSAY_MAX_WORDS):
+            raise EssayLengthError(actual_wc)
 
         return ValidatedEssayResponse(
             title=str(payload.get("title", "Digital Essay")).strip(),
@@ -192,12 +217,18 @@ def validate_agent_response(
 
     elif mode in ("artifact_markdown", "artifact_html"):
         kind: Literal["markdown", "html"] = (
-            "html" if mode == "artifact_html" or payload.get("kind") == "html" else "markdown"
+            "html"
+            if mode == "artifact_html" or payload.get("kind") == "html"
+            else "markdown"
         )
         raw_eids = payload.get("source_evidence_ids", [])
         if not isinstance(raw_eids, list):
             raw_eids = []
-        cleaned_eids = [str(eid).strip() for eid in raw_eids if str(eid).strip() in valid_evidence_ids]
+        cleaned_eids = [
+            str(eid).strip()
+            for eid in raw_eids
+            if str(eid).strip() in valid_evidence_ids
+        ]
 
         return ValidatedArtifactResponse(
             mode="artifact_html" if kind == "html" else "artifact_markdown",

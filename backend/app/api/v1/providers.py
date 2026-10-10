@@ -19,10 +19,13 @@ async def get_providers_status():
     """
     Check availability of local Ollama and configured cloud LLM providers.
     Uses short 1.5-second timeout to never block frontend UI.
+
+    Spec §6.2: the response is public UI-safe config only — no internal
+    base URLs, no raw exception text, no secrets.
     """
     # 1. Probe local Ollama
     local_status = "unavailable"
-    local_error = None
+    local_error: str | None = None
     available_local_models: list[str] = []
 
     try:
@@ -38,8 +41,9 @@ async def get_providers_status():
                 ]
             else:
                 local_error = f"Ollama returned HTTP {resp.status_code}"
-    except Exception as exc:  # noqa: BLE001
-        local_error = f"Cannot reach Ollama at {settings.OLLAMA_BASE_URL}: {exc}"
+    except Exception:  # noqa: BLE001
+        # Redacted category only; the internal URL/exception stays in logs.
+        local_error = "Ollama is unreachable on the host machine"
 
     # 2. Check cloud provider configuration
     cloud_provider = settings.DEFAULT_CLOUD_PROVIDER
@@ -62,12 +66,11 @@ async def get_providers_status():
             "provider": "ollama",
             "model": settings.OLLAMA_CHAT_MODEL,
             "embedding_model": settings.OLLAMA_EMBEDDING_MODEL,
-            "base_url": settings.OLLAMA_BASE_URL,
             "available_models": available_local_models,
             "error": local_error,
         },
         "cloud": {
-            "status": "ready" if cloud_configured else "unconfigured",
+            "status": "configured" if cloud_configured else "unconfigured",
             "provider": cloud_provider,
             "model": cloud_model,
             "configured": cloud_configured,

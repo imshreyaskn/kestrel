@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import { z } from "zod";
 import dotenv from "dotenv";
+import { timingSafeEqual } from "node:crypto";
 import {
   createModels,
   createProvider,
@@ -10,6 +11,8 @@ import {
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
+import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 
 dotenv.config();
 
@@ -19,6 +22,27 @@ const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || "";
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://host.docker.internal:11434";
 
 app.use(express.json({ limit: "2mb" }));
+
+// Structured request logging (spec §11.1): correlation IDs and counts only,
+// never prompt content or transcript text.
+app.use((req: Request, res: Response, next: () => void) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    console.log(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "info",
+        service: "agent-gateway",
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        duration_ms: Date.now() - start,
+        request_id: (req.headers["x-request-id"] as string) || null,
+      })
+    );
+  });
+  next();
+});
 
 // ---------------------------------------------------------------------------
 // Pi AI Models Collection Initialization
@@ -53,8 +77,18 @@ const ollamaProvider = createProvider({
 });
 models.setProvider(ollamaProvider);
 
-// 2. Register Built-in Google Gemini Provider
+// 2. Register Built-in Cloud Providers (Google Gemini, Anthropic, OpenAI)
 models.setProvider(googleProvider());
+models.setProvider(anthropicProvider());
+models.setProvider(openaiProvider());
+
+// Map a cloud provider enum to its Pi AI provider id and api type. Used when
+// reconstructing prior assistant turns in the conversation context.
+const CLOUD_PROVIDER_META: Record<string, { providerId: string; api: string }> = {
+  gemini: { providerId: "google", api: "google-generative-ai" },
+  anthropic: { providerId: "anthropic", api: "anthropic-messages" },
+  openai: { providerId: "openai", api: "openai-responses" },
+};
 
 // ---------------------------------------------------------------------------
 // Request Validation Schema (IMPLEMENTATION_SPEC.md §6.6)
@@ -78,10 +112,10 @@ const GenerateRequestSchema = z.object({
       evidence_id: z.string(),
       chunk_id: z.string().optional(),
       source_id: z.string().optional(),
-      guest: z.string().optional(),
-      episode_title: z.string().optional(),
+      guest: z.string().nullable().optional(),
+      episode_title: z.string().nullable().optional(),
       excerpt: z.string(),
-      supports: z.string().optional(),
+      supports: z.string().nullable().optional(),
     })
   ).default([]),
   system_prompt: z.string().optional(),
@@ -104,19 +138,33 @@ app.get("/health", (_req: Request, res: Response) => {
   });
 });
 
-// Middleware for internal service authentication
+// Middleware for internal service authentication (spec §6.6).
+// Fails CLOSED: an unconfigured token must never silently disable auth.
 function authenticateInternal(req: Request, res: Response, next: () => void) {
   if (!INTERNAL_SERVICE_TOKEN) {
-    return next();
+    return res.status(503).json({
+      error: "internal_token_not_configured",
+      message:
+        "INTERNAL_SERVICE_TOKEN is not configured on the gateway; refusing unauthenticated requests.",
+    });
   }
   const token = req.headers["x-internal-service-token"];
-  if (token !== INTERNAL_SERVICE_TOKEN) {
+  if (typeof token !== "string" || !tokensMatch(token, INTERNAL_SERVICE_TOKEN)) {
     return res.status(403).json({
       error: "forbidden",
       message: "Invalid internal service token",
     });
   }
   next();
+}
+
+function tokensMatch(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(a, b);
 }
 
 // Generate endpoint powered by Pi AI SDK
@@ -163,6 +211,11 @@ ${evidenceText}`;
 
     // Construct Pi AI Context Messages
     const piMessages: Message[] = [];
+    const effectiveCloud = payload.cloud_provider || "gemini";
+    const assistantTurnMeta =
+      payload.provider === "local"
+        ? { providerId: "ollama", api: "openai-completions" }
+        : CLOUD_PROVIDER_META[effectiveCloud] || CLOUD_PROVIDER_META.gemini;
 
     for (const msg of payload.conversation_context) {
       if (msg.role === "user") {
@@ -175,8 +228,8 @@ ${evidenceText}`;
         piMessages.push({
           role: "assistant",
           content: [{ type: "text", text: msg.content }],
-          api: "openai-completions",
-          provider: payload.provider === "local" ? "ollama" : "google",
+          api: assistantTurnMeta.api,
+          provider: assistantTurnMeta.providerId,
           model: payload.model_id,
           timestamp: Date.now(),
           stopReason: "stop",
@@ -199,51 +252,50 @@ ${evidenceText}`;
     let targetModel: Model<any> | undefined;
 
     if (payload.provider === "local") {
-      // Resolve or dynamically declare Ollama model on the Ollama provider
-      let ollamaModel = models.getModel("ollama", payload.model_id);
-      if (!ollamaModel) {
-        const dynamicModel: Model<"openai-completions"> = {
-          id: payload.model_id,
-          name: `${payload.model_id} (Ollama Dynamic)`,
-          api: "openai-completions",
-          provider: "ollama",
-          baseUrl: ollamaBaseApiUrl,
-          reasoning: false,
-          input: ["text"],
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          contextWindow: 32768,
-          maxTokens: 4096,
-        };
-        const updatedProvider = createProvider({
-          id: "ollama",
-          name: "Ollama Local Inference",
-          baseUrl: ollamaBaseApiUrl,
-          auth: { apiKey: { name: "Ollama", resolve: async () => ({ auth: { apiKey: "ollama" } }) } },
-          models: [...models.getModels("ollama"), dynamicModel],
-          api: openAICompletionsApi(),
+      // Model allowlist (spec §6.6): the gateway serves exactly the model
+      // configured via OLLAMA_CHAT_MODEL. No dynamic registration of
+      // arbitrary client-supplied model IDs, and no silent substitution.
+      if (payload.model_id !== defaultOllamaModel.id) {
+        return res.status(404).json({
+          error: "model_not_allowed",
+          message: `Model '${payload.model_id}' is not the configured local model ('${defaultOllamaModel.id}'). Set OLLAMA_CHAT_MODEL to change it.`,
+          latency_ms: Date.now() - startTime,
         });
-        models.setProvider(updatedProvider);
-        ollamaModel = models.getModel("ollama", payload.model_id);
       }
-      targetModel = ollamaModel;
+      targetModel = models.getModel("ollama", payload.model_id);
     } else {
-      // Cloud provider routing via Pi AI
+      // Cloud provider routing via Pi AI (spec §3.2: gemini, anthropic, openai).
+      // Exact model match only: never silently substitute a different model.
       const cloudProviderName = payload.cloud_provider || "gemini";
-      if (cloudProviderName === "gemini") {
-        if (!process.env.GEMINI_API_KEY) {
-          return res.status(400).json({
-            error: "missing_api_key",
-            message: "GEMINI_API_KEY environment variable is not configured on the server",
-            latency_ms: Date.now() - startTime,
-          });
-        }
-        // Match model in Google catalog
-        const googleModels = models.getModels("google");
-        targetModel = googleModels.find((m) => m.id === payload.model_id) || googleModels[0];
-      } else {
+      const providerMeta = CLOUD_PROVIDER_META[cloudProviderName];
+      if (!providerMeta) {
         return res.status(501).json({
-          error: "not_implemented",
-          message: `Cloud provider '${cloudProviderName}' is scheduled for Phase 3`,
+          error: "provider_not_supported",
+          message: `Cloud provider '${cloudProviderName}' is not supported by this gateway.`,
+          latency_ms: Date.now() - startTime,
+        });
+      }
+
+      const apiKeyByProvider: Record<string, string | undefined> = {
+        gemini: process.env.GEMINI_API_KEY,
+        anthropic: process.env.ANTHROPIC_API_KEY,
+        openai: process.env.OPENAI_API_KEY,
+      };
+      const apiKey = apiKeyByProvider[cloudProviderName];
+      if (!apiKey) {
+        return res.status(400).json({
+          error: "missing_api_key",
+          message: `${cloudProviderName.toUpperCase()}_API_KEY environment variable is not configured on the server`,
+          latency_ms: Date.now() - startTime,
+        });
+      }
+
+      const catalog = models.getModels(providerMeta.providerId);
+      targetModel = catalog.find((m) => m.id === payload.model_id);
+      if (!targetModel) {
+        return res.status(404).json({
+          error: "model_not_found",
+          message: `Model '${payload.model_id}' is not available in the ${cloudProviderName} catalog. Set ${cloudProviderName.toUpperCase()}_MODEL to a valid model ID.`,
           latency_ms: Date.now() - startTime,
         });
       }

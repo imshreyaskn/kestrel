@@ -22,9 +22,18 @@ dev:
 	$(DOCKER_COMPOSE) up -d db agent-gateway
 	@echo "Development services started."
 
+dev-expose:
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f compose.dev.yml up -d
+	@echo "Services running with debug ports (db on 5433, gateway on 127.0.0.1:8010)."
+
 demo:
 	$(DOCKER_COMPOSE) up -d
 	@echo "All services running at http://localhost:5173"
+	@echo "Note: first boot applies Alembic migrations automatically inside the api container."
+	@echo "Run 'make ingest' to load the transcript knowledge base."
+
+migrate:
+	$(DOCKER_COMPOSE) exec api alembic -c /app/alembic.ini upgrade head
 
 test:
 	$(PYTHON) -m pytest -v
@@ -44,11 +53,11 @@ typecheck:
 	cd frontend && npm run build
 
 ingest:
-	$(PYTHON) -m backend.app.ingestion.cli sync
-	$(PYTHON) -m backend.app.ingestion.cli index
+	$(DOCKER_COMPOSE) exec api python -m backend.app.ingestion.cli sync
+	$(DOCKER_COMPOSE) exec api python -m backend.app.ingestion.cli index
 
 ingest-check:
-	$(PYTHON) -m backend.app.ingestion.cli stats
+	$(DOCKER_COMPOSE) exec api python -m backend.app.ingestion.cli stats
 
 stats: ingest-check
 

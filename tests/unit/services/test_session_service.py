@@ -167,5 +167,8 @@ async def test_get_session_messages_resolves_stored_chunk_excerpt():
     assert cit["guest"] == "Elena Verna"
     assert cit["episode_title"] == "Elena Verna on PLG"
     # SPEC §5.6 invariant: Excerpt is read from chunk.content
-    assert cit["excerpt"] == "Activation rate is the percentage of new users reaching value."
+    assert (
+        cit["excerpt"]
+        == "Activation rate is the percentage of new users reaching value."
+    )
     assert cit["supports"] == "Definition of activation"

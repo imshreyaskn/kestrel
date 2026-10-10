@@ -1,0 +1,10 @@
+# Development-only port overrides (spec §13.1: base topology keeps PostgreSQL
+# and the agent-gateway internal). Usage:
+#   docker compose -f docker-compose.yml -f compose.dev.yml up -d
+services:
+  db:
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+  agent-gateway:
+    ports:
+      - "127.0.0.1:8010:8010"

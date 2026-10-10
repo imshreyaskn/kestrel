@@ -29,20 +29,31 @@ async def live_check() -> dict:
 
 @router.get("/ready", summary="Readiness Probe")
 async def ready_check() -> JSONResponse:
-    """Readiness probe: verifies PostgreSQL database and upstream providers."""
+    """Readiness probe: verifies PostgreSQL (including migration state),
+    then reports upstream provider health without blocking readiness."""
     components: dict[str, dict] = {}
     is_ready = True
 
-    # 1. Database Check (PostgreSQL + pgvector)
+    # 1. Database Check (PostgreSQL + pgvector + migration state per §11.3)
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1;"))
+            # Verify the Alembic migration has actually been applied; a
+            # bare SELECT 1 succeeds even on an empty schema.
+            await session.execute(
+                text("SELECT version_num FROM alembic_version LIMIT 1;")
+            )
             components["database"] = {"status": "up", "type": "postgresql"}
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        # Redacted category only (spec §6.2: readiness must not leak secrets
+        # or internal connection details).
         is_ready = False
-        components["database"] = {"status": "down", "error": str(e)}
+        components["database"] = {
+            "status": "down",
+            "error": "database_unreachable_or_not_migrated",
+        }
 
-    # 2. Host Ollama Check
+    # 2. Host Ollama Check (optional provider: does not block readiness)
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             ollama_res = await client.get(f"{settings.OLLAMA_BASE_URL}/api/version")
@@ -56,22 +67,23 @@ async def ready_check() -> JSONResponse:
                     "status": "degraded",
                     "code": ollama_res.status_code,
                 }
-    except Exception as e:  # noqa: BLE001
-        components["ollama"] = {"status": "unreachable", "error": str(e)}
+    except Exception:  # noqa: BLE001
+        components["ollama"] = {"status": "unreachable"}
 
-    # 3. Agent Gateway Check
+    # 3. Agent Gateway Check (required for generation; reported, not fatal,
+    # so the UI can surface provider guidance while the API stays inspectable)
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
             gw_res = await client.get(f"{settings.AGENT_GATEWAY_URL}/health")
             if gw_res.status_code == 200:
-                components["agent_gateway"] = {"status": "up", "details": gw_res.json()}
+                components["agent_gateway"] = {"status": "up"}
             else:
                 components["agent_gateway"] = {
                     "status": "degraded",
                     "code": gw_res.status_code,
                 }
-    except Exception as e:  # noqa: BLE001
-        components["agent_gateway"] = {"status": "unreachable", "error": str(e)}
+    except Exception:  # noqa: BLE001
+        components["agent_gateway"] = {"status": "unreachable"}
 
     status_code = (
         status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE

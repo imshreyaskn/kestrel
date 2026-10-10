@@ -1,6 +1,6 @@
 """
 Artifacts Router (Codename: Kestrel)
-Implements IMPLEMENTATION_SPEC.md §5.8, §6.2, & §9.1.
+Implements IMPLEMENTATION_SPEC.md §5.8, §6.2, & §9.1 (ownership + version checks).
 """
 
 from __future__ import annotations
@@ -9,9 +9,10 @@ import datetime
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.api.v1.sessions import get_current_user_id
 from backend.app.db.session import get_db
 from backend.app.services.artifact_service import default_artifact_service
 
@@ -21,7 +22,8 @@ router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 class UpdateArtifactRequest(BaseModel):
     title: str | None = None
     content: str | None = None
-    expected_version: int | None = None
+    # Spec §5.8: never persist user edits silently over another version.
+    expected_version: int = Field(..., gt=0)
 
 
 class ArtifactResponse(BaseModel):
@@ -40,9 +42,12 @@ class ArtifactResponse(BaseModel):
 async def get_artifact(
     artifact_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """Retrieve artifact by ID."""
-    artifact = await default_artifact_service.get_artifact(db=db, artifact_id=artifact_id)
+    """Retrieve artifact by ID, enforcing session ownership."""
+    artifact = await default_artifact_service.get_artifact(
+        db=db, artifact_id=artifact_id, user_id=user_id
+    )
     if not artifact:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -66,12 +71,14 @@ async def update_artifact(
     artifact_id: uuid.UUID,
     payload: UpdateArtifactRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """Update artifact with optimistic version checking and sandbox preview regeneration."""
+    """Update artifact with ownership and optimistic version checking."""
     try:
         updated = await default_artifact_service.update_artifact(
             db=db,
             artifact_id=artifact_id,
+            user_id=user_id,
             title=payload.title,
             content=payload.content,
             expected_version=payload.expected_version,

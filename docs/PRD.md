@@ -79,10 +79,10 @@ The assistant is built for product managers, growth leads, and startup founders 
 | Assignment Requirement | Architecture Component | Implementation File / Module | Verification Gate |
 | :--- | :--- | :--- | :--- |
 | **FastAPI Backend (§3.1)** | Backend Core | `backend/app/main.py`, `backend/app/api/v1/` | Unit & API tests |
-| **Pi Coding Agent (§3.1)** | Agent Gateway | `agent-gateway/src/runtime/pi-runtime.ts` | Gateway test suite |
+| **Pi Coding Agent (§3.1)** | Agent Gateway | `agent-gateway/src/server.ts` (single-module implementation; `providers.ts`/`schemas.ts` split intentionally deferred) | `tsc --noEmit` in Node 22 container + live gateway health + live local/cloud generation |
 | **PostgreSQL Persistence (§3.1)** | Database Layer | `backend/app/db/`, Alembic migrations | Migration & FK tests |
 | **Session Isolation (§3.1)** | Session Service | `backend/app/services/session_service.py` | Multi-session test |
-| **Multi-Provider Config (§3.2)** | Gateway Providers | `agent-gateway/src/providers.ts`, `.env` | Provider switch tests |
+| **Multi-Provider Config (§3.2)** | Gateway Providers | `agent-gateway/src/server.ts` provider registry + `.env` | Provider switch tests + live E2E (Gemini & Ollama verified; Anthropic/OpenAI implemented, type-checked, not live-verified — no evaluator keys during hardening) |
 | **Local Ollama Demo (§3.2)** | Host Ollama | `http://host.docker.internal:11434` | Live smoke test |
 | **Transcript Ingestion (§3.3)**| Ingestion CLI | `backend/app/ingestion/` | Idempotency hash test |
 | **Grounding & Citations (§4.1)**| Retrieval Engine | `backend/app/retrieval/`, `message_sources` | Evaluation suite |
@@ -121,3 +121,5 @@ flowchart LR
 * **Phase 3 (Agent Workflows & Skills):** Multi-provider routing (Gemini, Ollama, Claude), Grounded Research workflow, Growth Brief persistence with optimistic versioning, Ship 30 for 30 essay skill, nh3 HTML sanitizer and CSP isolation, 95 passing tests. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 007)
 * **Phase 4 (Workbench UI & Artifacts):** Editorial Research Studio (Dossier) visual language, session manager, sandboxed iframe Plate Viewer, zero-dependency MarkdownViewer, dynamic 7-section Growth Brief editor with 409 conflict detection, 99 passing tests with integrated E2E test suite. (Status: ✅ **PASSED & EMPIRICALLY VERIFIED** — Transcript 008)
 * **Phase 5 (Hardening & Delivery):** Full test suite, static type checking (69 source files), zero lint errors (ruff), manual evaluation test plan (`docs/manual-test-plan.md`), system architecture (`docs/architecture.md`), design system (`docs/design.md`), sanitized transcripts in `agent-transcripts/`. (Status: ✅ **COMPLETED**)
+
+> **Post-delivery remediation (2026-10-10):** An adversarial audit (transcript `010-phase-3-audit-remediation.md`) found that several Phase 3–5 "empirically verified" claims did not match the shipped code: missing ownership checks on briefs/artifacts, no server-side insufficient-evidence bypass, no model allowlist, silent cloud model fallback, absent essay word-count gate, raw exception leakage, no migration execution in startup, incomplete `.env` passthrough, and a gateway request-contract bug that broke the core research flow (fixed and live-verified during remediation). All Phase 3–5 gates above were re-run and re-verified after remediation; current evidence supersedes the original transcripts where they conflict.

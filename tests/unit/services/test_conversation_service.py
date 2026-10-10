@@ -5,15 +5,20 @@ Unit tests for ConversationService orchestrator and SSE stream generation.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.app.agent_client.gateway_client import GatewayGenerationResult
+from backend.app.core.config import settings
 from backend.app.models.entities import ChatSession
 from backend.app.retrieval.hybrid_search import EvidenceItem, RetrievalResult
-from backend.app.services.conversation_service import ConversationService
+from backend.app.services.conversation_service import (
+    ConversationService,
+    ModelNotAllowedError,
+)
 
 
 @pytest.mark.asyncio
@@ -100,14 +105,23 @@ async def test_conversation_service_stream_research_flow():
     assert event_names.count("stage") == 5
 
     stages = [e["data"]["stage"] for e in events if e["event"] == "stage"]
-    assert stages == ["loading_context", "retrieving", "drafting", "validating", "saving"]
+    assert stages == [
+        "loading_context",
+        "retrieving",
+        "drafting",
+        "validating",
+        "saving",
+    ]
 
     # Verify completed event content
     completed_event = next(e for e in events if e["event"] == "completed")
     completed_data = completed_event["data"]
 
     assert completed_data["message"]["status"] == "complete"
-    assert "Growth loops require multiple fits [E1]" in completed_data["message"]["content"]
+    assert (
+        "Growth loops require multiple fits [E1]"
+        in completed_data["message"]["content"]
+    )
     assert len(completed_data["citations"]) == 1
     cit = completed_data["citations"][0]
     assert cit["evidence_id"] == "E1"
@@ -224,3 +238,242 @@ async def test_conversation_service_session_not_found_returns_error_envelope():
     assert events[0]["event"] == "stage"
     assert events[1]["event"] == "error"
     assert events[1]["data"]["error"]["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_abstains_when_evidence_empty():
+    """Spec §7.6/§11.2/§12.1: empty retrieval must NOT call generation."""
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    session_obj = ChatSession(id=session_id, user_id=user_id, title="New Chat")
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    mock_retrieval = AsyncMock()
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[],
+        insufficient_evidence=True,
+        query="What is the average PLG conversion benchmark?",
+    )
+
+    mock_gateway = AsyncMock()  # must never be called
+
+    service = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    events = [
+        e
+        async for e in service.process_message_stream(
+            db=mock_db,
+            session_id=session_id,
+            user_id=user_id,
+            content="What is the average PLG conversion benchmark?",
+        )
+    ]
+
+    mock_gateway.generate.assert_not_called()
+    completed = next(e for e in events if e["event"] == "completed")
+    assert completed["data"]["insufficient_evidence"] is True
+    assert completed["data"]["citations"] == []
+    assert "Not in the archive" in completed["data"]["message"]["content"]
+    assert completed["data"]["message"]["status"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_gateway_connection_error_is_redacted():
+    """Spec §6.1/§11.1: raw exception text (URLs, internals) must never reach
+    the client; the error is classified as AGENT_UNAVAILABLE."""
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    session_obj = ChatSession(id=session_id, user_id=user_id)
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    evidence_item = EvidenceItem(
+        evidence_id="E1",
+        chunk_id=uuid.uuid4(),
+        source_id=uuid.uuid4(),
+        source_key="episodes/x/transcript.md",
+        chunk_index=0,
+        episode_title="Episode",
+        guest="Guest",
+        episode_url=None,
+        publish_date=None,
+        excerpt="Some passage.",
+        char_start=0,
+        char_end=20,
+        rrf_score=0.01,
+        dense_rank=1,
+        sparse_rank=None,
+    )
+    mock_retrieval = AsyncMock()
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[evidence_item],
+        insufficient_evidence=False,
+        query="q",
+    )
+
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.side_effect = ConnectionError(
+        "Could not connect to agent gateway at http://agent-gateway:8010 "
+        "with token super-secret-value"
+    )
+
+    service = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    events = [
+        e
+        async for e in service.process_message_stream(
+            db=mock_db,
+            session_id=session_id,
+            user_id=user_id,
+            content="Hello",
+        )
+    ]
+
+    error_event = next(e for e in events if e["event"] == "error")
+    err = error_event["data"]["error"]
+    assert err["code"] == "AGENT_UNAVAILABLE"
+    assert err["retryable"] is True
+    # No internal URL or secret material may leak into the client envelope.
+    assert "agent-gateway:8010" not in err["message"]
+    assert "super-secret-value" not in err["message"]
+    assert "request_id" in err
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_marks_cancelled_on_disconnect():
+    """Spec §6.5: a disconnected/struck run must leave the assistant message
+    in terminal 'cancelled' state, never 'pending' or 'complete'."""
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    session_obj = ChatSession(id=session_id, user_id=user_id)
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    mock_retrieval = AsyncMock()
+    evidence_item = EvidenceItem(
+        evidence_id="E1",
+        chunk_id=uuid.uuid4(),
+        source_id=uuid.uuid4(),
+        source_key="episodes/x/transcript.md",
+        chunk_index=0,
+        episode_title="Episode",
+        guest="Guest",
+        episode_url=None,
+        publish_date=None,
+        excerpt="Some passage.",
+        char_start=0,
+        char_end=20,
+        rrf_score=0.01,
+        dense_rank=1,
+        sparse_rank=None,
+    )
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[evidence_item],
+        insufficient_evidence=False,
+        query="q",
+    )
+
+    # Gateway call hangs until cancelled
+    async def slow_generate(*args, **kwargs):
+        await asyncio.sleep(30)
+        raise AssertionError("should have been cancelled")
+
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.side_effect = slow_generate
+
+    service = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    gen = service.process_message_stream(
+        db=mock_db,
+        session_id=session_id,
+        user_id=user_id,
+        content="Hello",
+    )
+    seen = []
+    async for event in gen:
+        seen.append(event["event"])
+        if event["event"] == "stage" and event["data"]["stage"] == "drafting":
+            break
+    await gen.aclose()
+
+    added_messages = [c.args[0] for c in mock_db.add.call_args_list]
+    assistant_messages = [
+        m for m in added_messages if getattr(m, "role", None) == "assistant"
+    ]
+    assert assistant_messages, (
+        "assistant message must have been created before drafting"
+    )
+    assistant = assistant_messages[0]
+    assert assistant.status == "cancelled"
+    assert assistant.error_code == "CANCELLED"
+    assert assistant.content == ""
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_rejects_disallowed_model():
+    """Spec §6.6: model_id must come from the server allowlist."""
+    service = ConversationService()
+    events = [
+        e
+        async for e in service.process_message_stream(
+            db=AsyncMock(),
+            session_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            content="Hello",
+            provider="local",
+            model_id="some-unconfigured-model",
+        )
+    ]
+    assert len(events) == 1
+    err = events[0]["data"]["error"]
+    assert err["code"] == "MODEL_NOT_ALLOWED"
+    assert "some-unconfigured-model" in err["message"]
+    assert err["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_resolve_model_id_allowlist():
+    """Default resolution returns the configured model; explicit requests
+    must be inside the allowlist for the selected provider."""
+    assert (
+        ConversationService.resolve_model_id("local", None, None)
+        == settings.OLLAMA_CHAT_MODEL
+    )
+    assert (
+        ConversationService.resolve_model_id("cloud", "gemini", None)
+        == settings.GEMINI_MODEL
+    )
+    assert (
+        ConversationService.resolve_model_id("cloud", "anthropic", None)
+        == settings.ANTHROPIC_MODEL
+    )
+    with pytest.raises(ModelNotAllowedError):
+        ConversationService.resolve_model_id("cloud", "anthropic", "gpt-4o")

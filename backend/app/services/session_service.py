@@ -105,10 +105,13 @@ class SessionService:
         db: AsyncSession,
         session_id: uuid.UUID,
         user_id: uuid.UUID,
+        limit: int = 200,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         """
-        Fetch chronological messages for session with resolved evidence citations.
-        Excerpts are resolved directly from stored transcript_chunks.content.
+        Fetch chronological (paginated) messages for session with resolved
+        evidence citations. Excerpts are resolved directly from stored
+        transcript_chunks.content.
         """
         # 1. Enforce session ownership
         session = await SessionService.get_session(db, session_id, user_id)
@@ -119,7 +122,9 @@ class SessionService:
         stmt = (
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.created_at.asc())
+            .order_by(Message.created_at.asc(), Message.id.asc())
+            .offset(offset)
+            .limit(limit)
             .options(
                 selectinload(Message.sources)
                 .selectinload(MessageSource.chunk)
@@ -135,32 +140,42 @@ class SessionService:
             for src in msg.sources:
                 chunk = src.chunk
                 source = chunk.source if chunk else None
-                citations.append({
-                    "evidence_id": src.evidence_id,
-                    "source_id": str(chunk.source_id) if chunk else "",
-                    "chunk_id": str(src.chunk_id),
-                    "guest": source.guest if source else None,
-                    "episode_title": source.title if source else "Unknown Episode",
-                    "episode_url": source.episode_url if source else None,
-                    "publish_date": source.publish_date.isoformat() if source and source.publish_date else None,
-                    "excerpt": chunk.content if chunk else "",  # SPEC §5.6: Read from stored chunk, not generated quote
-                    "supports": src.supports,
-                })
+                citations.append(
+                    {
+                        "evidence_id": src.evidence_id,
+                        "source_id": str(chunk.source_id) if chunk else "",
+                        "chunk_id": str(src.chunk_id),
+                        "guest": source.guest if source else None,
+                        "episode_title": source.title if source else "Unknown Episode",
+                        "episode_url": source.episode_url if source else None,
+                        "publish_date": source.publish_date.isoformat()
+                        if source and source.publish_date
+                        else None,
+                        "excerpt": chunk.content
+                        if chunk
+                        else "",  # SPEC §5.6: Read from stored chunk, not generated quote
+                        "supports": src.supports,
+                    }
+                )
 
-            message_list.append({
-                "id": str(msg.id),
-                "session_id": str(msg.session_id),
-                "role": msg.role,
-                "content": msg.content,
-                "status": msg.status,
-                "workflow_mode": msg.workflow_mode,
-                "provider": msg.provider,
-                "model_id": msg.model_id,
-                "error_code": msg.error_code,
-                "created_at": msg.created_at.isoformat(),
-                "completed_at": msg.completed_at.isoformat() if msg.completed_at else None,
-                "citations": citations,
-            })
+            message_list.append(
+                {
+                    "id": str(msg.id),
+                    "session_id": str(msg.session_id),
+                    "role": msg.role,
+                    "content": msg.content,
+                    "status": msg.status,
+                    "workflow_mode": msg.workflow_mode,
+                    "provider": msg.provider,
+                    "model_id": msg.model_id,
+                    "error_code": msg.error_code,
+                    "created_at": msg.created_at.isoformat(),
+                    "completed_at": msg.completed_at.isoformat()
+                    if msg.completed_at
+                    else None,
+                    "citations": citations,
+                }
+            )
 
         return message_list
 

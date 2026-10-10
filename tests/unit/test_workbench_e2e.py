@@ -77,12 +77,15 @@ def test_e2e_research_to_citations_flow():
         "artifact_id": None,
     }
 
-    with patch(
-        "backend.app.api.v1.sessions.default_session_service.get_session",
-        new=AsyncMock(return_value=fake_session),
-    ), patch(
-        "backend.app.api.v1.sessions.default_conversation_service.process_message",
-        new=AsyncMock(return_value=conv_result),
+    with (
+        patch(
+            "backend.app.api.v1.sessions.default_session_service.get_session",
+            new=AsyncMock(return_value=fake_session),
+        ),
+        patch(
+            "backend.app.api.v1.sessions.default_conversation_service.process_message",
+            new=AsyncMock(return_value=conv_result),
+        ),
     ):
         response = client.post(
             f"/api/v1/sessions/{session_id}/messages",
@@ -167,7 +170,9 @@ def test_e2e_growth_brief_creation_and_optimistic_concurrency():
     # 3. Concurrent update with stale expected_version=1 -> 409 Conflict
     with patch(
         "backend.app.api.v1.growth_briefs.default_growth_brief_service.update_growth_brief",
-        new=AsyncMock(side_effect=ValueError("Version conflict: expected 1, but current is 2")),
+        new=AsyncMock(
+            side_effect=ValueError("Version conflict: expected 1, but current is 2")
+        ),
     ):
         conflict_res = client.patch(
             f"/api/v1/growth-briefs/{brief_id}",
@@ -213,7 +218,7 @@ def test_e2e_html_artifact_sanitization_and_malicious_payloads():
     assert "<iframe>" not in preview
     assert "javascript:" not in preview
     assert "@import" not in preview
-    assert "<meta http-equiv=\"Content-Security-Policy\"" in preview
+    assert '<meta http-equiv="Content-Security-Policy"' in preview
     assert "default-src 'none'" in preview
     assert "script-src 'none'" in preview
     assert "<h1>Dashboard Metric</h1>" in preview
@@ -247,7 +252,9 @@ def test_e2e_markdown_artifact_version_conflict():
 
     with patch(
         "backend.app.api.v1.artifacts.default_artifact_service.update_artifact",
-        new=AsyncMock(side_effect=ValueError("Version conflict: expected 1, but current is 3")),
+        new=AsyncMock(
+            side_effect=ValueError("Version conflict: expected 1, but current is 3")
+        ),
     ):
         res = client.patch(
             f"/api/v1/artifacts/{artifact_id}",

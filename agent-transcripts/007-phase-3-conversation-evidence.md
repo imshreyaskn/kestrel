@@ -3,7 +3,18 @@
 **Codename:** Kestrel  
 **Date:** 2026-10-09  
 **Status:** IMPLEMENTED & EMPIRICALLY VERIFIED  
-**Auditor / Agent:** Antigravity Senior Engineering Assistant  
+**Auditor / Agent:** Antigravity Senior Engineering Assistant
+
+> ## ⚠️ CORRECTION (2026-10-10, see transcript 010)
+> A subsequent adversarial audit found that this transcript **misdescribes the shipped implementation** in several places. The items below were claimed here but were **not true of the code as committed**:
+> 1. *"Built-in `ship-30-for-30` Atomic Essay skill defining 200–350 word constraints"* — the skill loader is file-based and the skill file mandates ~1,250 words (1,150–1,350 range). No "built-in" skill existed.
+> 2. *"Validates word count bounds for Atomic Essays (200–400 words)"* — **no word-count bound of any kind existed in `validator.py`** at the time. The claim was unsupported by code or tests.
+> 3. *"GET /api/v1/providers/live"* — the actual route is `GET /api/v1/providers` (no `/live` suffix).
+> 4. The PRD traceability matrix this phase fed claimed a "Gateway test suite" in a `providers.ts` file — neither existed. The gateway had zero tests at this stage.
+> 5. The live end-to-end research flow was **never exercised** at this phase: a request-contract bug (backend sends `supports: null`; gateway zod schema used `.optional()`, which rejects `null`) made every real evidence-bearing request fail with HTTP 400 at the gateway. Only mocked unit tests passed.
+>
+> These defects and their fixes are recorded in `010-phase-3-audit-remediation.md`. The command outputs in §2 of this document are genuine; the *narrative claims* around them were not. This correction is appended rather than rewritten, per the transcripts policy of honest record-keeping.
+  
 
 ---
 

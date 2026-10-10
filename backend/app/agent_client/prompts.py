@@ -32,9 +32,41 @@ def format_evidence_block(evidence_items: Sequence[Any]) -> str:
         excerpt = getattr(item, "excerpt", "")
         guest = getattr(item, "guest", "Unknown") or "Unknown"
         title = getattr(item, "episode_title", "Unknown") or "Unknown"
-        lines.append(f"[{eid}] \"{excerpt}\"\n   Source: {title} (Guest: {guest})")
+        lines.append(f'[{eid}] "{excerpt}"\n   Source: {title} (Guest: {guest})')
     lines.append("--- END EVIDENCE ---")
     return "\n\n".join(lines)
+
+
+def build_repair_system_prompt(
+    mode: str,
+    evidence_block: str,
+    product_context: str | None = None,
+    validation_error: str = "",
+) -> str:
+    """System prompt for the single constrained repair attempt (spec §7.6).
+
+    Reuses the base prompt for the mode and adds a strict correction
+    instruction containing the validation failure reason.
+    """
+    base_prompt = build_system_prompt(
+        mode=mode,
+        evidence_block=evidence_block,
+        product_context=product_context,
+    )
+    bounded_error = validation_error[:300]
+    return f"""{base_prompt}
+
+REPAIR INSTRUCTION (retry after invalid output):
+Your previous response was rejected because it was not a single valid JSON
+object. Reported problem: {bounded_error}
+
+Return ONLY one corrected JSON object matching the OUTPUT SCHEMA above.
+- Start the response with {{ and end it with }}.
+- Do not add commentary, apologies, or markdown fences.
+- Escape all quotation marks inside string values.
+- Keep every field from the schema, with citation evidence IDs drawn only
+  from the provided evidence.
+"""
 
 
 def build_system_prompt(
@@ -74,7 +106,11 @@ def build_system_prompt(
 
     elif mode == "essay":
         skill = default_skill_loader.load_skill("ship-30-for-30")
-        skill_text = skill.instructions if skill else "Apply Ship 30 for 30 digital writing principles."
+        skill_text = (
+            skill.instructions
+            if skill
+            else "Apply Ship 30 for 30 digital writing principles."
+        )
 
         schema_desc = """OUTPUT SCHEMA (STRICT JSON):
 {

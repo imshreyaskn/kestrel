@@ -150,6 +150,18 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 # Include API v1 Router
 app.include_router(api_v1_router)
 
+_PLACEHOLDER_TOKENS = {
+    "replace-with-a-long-random-local-token",
+    "replace-with-a-local-random-value",
+}
+
+if settings.INTERNAL_SERVICE_TOKEN in ("", *_PLACEHOLDER_TOKENS):
+    logger.warning(
+        "INTERNAL_SERVICE_TOKEN is unset or a known placeholder. "
+        "The gateway now fails closed, so set a strong random value in .env "
+        "before running the dockerized stack."
+    )
+
 
 @app.get("/", summary="Root Health Ping")
 async def root_ping():

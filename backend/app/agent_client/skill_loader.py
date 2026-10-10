@@ -66,9 +66,21 @@ class SkillLoader:
                 except yaml.YAMLError as exc:
                     logger.warning(f"Failed parsing skill YAML frontmatter: {exc}")
 
+        try:
+            skill_version = int(metadata.get("version", 1))
+        except (TypeError, ValueError):
+            # Malformed frontmatter must not crash the essay workflow;
+            # degrade to the default version rather than failing the run.
+            logger.warning(
+                "Skill %s has a non-integer version %r; defaulting to 1",
+                fallback_name,
+                metadata.get("version"),
+            )
+            skill_version = 1
+
         return RuntimeSkill(
             name=metadata.get("name", fallback_name),
-            version=int(metadata.get("version", 1)),
+            version=skill_version,
             purpose=str(metadata.get("purpose", "")),
             instructions=instructions,
             metadata=metadata,

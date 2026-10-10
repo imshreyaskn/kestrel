@@ -34,13 +34,31 @@ def test_get_growth_brief_endpoint():
     with patch(
         "backend.app.api.v1.growth_briefs.default_growth_brief_service.get_growth_brief",
         new=AsyncMock(return_value=fake_brief),
-    ):
+    ) as mock_get:
         response = client.get(f"/api/v1/growth-briefs/{brief_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Activation Strategy Brief"
         assert data["version"] == 1
         assert data["data"]["problem"] == "Friction in signup"
+        # Ownership wiring: the router must pass the demo user id down
+        # (spec §6.2 ownership check).
+        assert mock_get.call_args.kwargs.get("user_id") == uuid.UUID(
+            "00000000-0000-4000-8000-000000000001"
+        )
+
+
+def test_get_growth_brief_from_foreign_user_returns_404():
+    """Ownership enforcement: a brief that exists but belongs to another
+    user's session must be indistinguishable from a missing brief."""
+    brief_id = uuid.uuid4()
+    with patch(
+        "backend.app.api.v1.growth_briefs.default_growth_brief_service.get_growth_brief",
+        new=AsyncMock(return_value=None),
+    ):
+        response = client.get(f"/api/v1/growth-briefs/{brief_id}")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "NOT_FOUND"
 
 
 def test_update_growth_brief_version_conflict_returns_409():
@@ -57,6 +75,26 @@ def test_update_growth_brief_version_conflict_returns_409():
         data = response.json()
         assert "error" in data
         assert "conflict" in data["error"]["message"].lower()
+
+
+def test_update_growth_brief_requires_expected_version():
+    """Spec §5.7: PATCH without expected_version must be rejected (422),
+    not silently applied as a last-writer-wins overwrite."""
+    brief_id = uuid.uuid4()
+    response = client.patch(
+        f"/api/v1/growth-briefs/{brief_id}",
+        json={"title": "Sneaky overwrite"},
+    )
+    assert response.status_code == 422
+
+
+def test_update_growth_brief_rejects_invalid_status():
+    brief_id = uuid.uuid4()
+    response = client.patch(
+        f"/api/v1/growth-briefs/{brief_id}",
+        json={"status": "bogus-status", "expected_version": 1},
+    )
+    assert response.status_code == 422
 
 
 def test_get_artifact_endpoint():
@@ -77,13 +115,26 @@ def test_get_artifact_endpoint():
     with patch(
         "backend.app.api.v1.artifacts.default_artifact_service.get_artifact",
         new=AsyncMock(return_value=fake_artifact),
-    ):
+    ) as mock_get:
         response = client.get(f"/api/v1/artifacts/{art_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["kind"] == "html"
         assert data["title"] == "Metrics Dashboard"
         assert data["preview_content"] is not None
+        assert mock_get.call_args.kwargs.get("user_id") == uuid.UUID(
+            "00000000-0000-4000-8000-000000000001"
+        )
+
+
+def test_get_artifact_from_foreign_user_returns_404():
+    art_id = uuid.uuid4()
+    with patch(
+        "backend.app.api.v1.artifacts.default_artifact_service.get_artifact",
+        new=AsyncMock(return_value=None),
+    ):
+        response = client.get(f"/api/v1/artifacts/{art_id}")
+        assert response.status_code == 404
 
 
 def test_update_artifact_version_conflict_returns_409():
@@ -100,3 +151,13 @@ def test_update_artifact_version_conflict_returns_409():
         data = response.json()
         assert "error" in data
         assert "conflict" in data["error"]["message"].lower()
+
+
+def test_update_artifact_requires_expected_version():
+    """Spec §5.8: PATCH without expected_version must be rejected (422)."""
+    art_id = uuid.uuid4()
+    response = client.patch(
+        f"/api/v1/artifacts/{art_id}",
+        json={"content": "Sneaky overwrite"},
+    )
+    assert response.status_code == 422

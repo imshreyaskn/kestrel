@@ -3,7 +3,6 @@ Unit tests for HTML & CSS security sanitizer (Codename: Kestrel)
 Verifies adversarial XSS payloads and CSP enforcement per IMPLEMENTATION_SPEC.md §9.
 """
 
-
 from backend.app.security.sanitizer import (
     CSP_PREVIEW_POLICY,
     build_sandboxed_preview_html,
@@ -42,7 +41,7 @@ def test_sanitize_html_strips_javascript_urls():
     raw = '<a href="javascript:alert(document.cookie)">Click here</a>'
     cleaned = sanitize_html(raw)
     assert "javascript:" not in cleaned
-    assert 'href=""' in cleaned or 'href' not in cleaned or "javascript" not in cleaned
+    assert 'href=""' in cleaned or "href" not in cleaned or "javascript" not in cleaned
 
 
 def test_sanitize_html_strips_forms_and_inputs():

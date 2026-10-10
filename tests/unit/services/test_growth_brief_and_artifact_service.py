@@ -102,7 +102,7 @@ async def test_artifact_create_html_generates_sandboxed_preview():
     assert artifact.kind == "html"
     assert artifact.version == 1
     assert artifact.preview_content is not None
-    assert "<meta http-equiv=\"Content-Security-Policy\"" in artifact.preview_content
+    assert '<meta http-equiv="Content-Security-Policy"' in artifact.preview_content
     assert "<script>" not in artifact.preview_content
     assert "<h1>Dashboard</h1>" in artifact.preview_content
 

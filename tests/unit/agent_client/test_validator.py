@@ -5,7 +5,12 @@ Unit tests for agent output validator and evidence citation filtering.
 
 import json
 
+import pytest
+
 from backend.app.agent_client.validator import (
+    ESSAY_MAX_WORDS,
+    ESSAY_MIN_WORDS,
+    EssayLengthError,
     ValidatedArtifactResponse,
     ValidatedEssayResponse,
     ValidatedGrowthBriefResponse,
@@ -47,7 +52,9 @@ def test_validate_research_response_with_fenced_json():
     ```
     """
     valid_ids = {"E1", "E2"}
-    result = validate_agent_response(raw_llm, mode="research", valid_evidence_ids=valid_ids)
+    result = validate_agent_response(
+        raw_llm, mode="research", valid_evidence_ids=valid_ids
+    )
 
     assert isinstance(result, ValidatedResearchResponse)
     assert "[E1]" in result.answer_markdown
@@ -66,7 +73,9 @@ def test_validate_research_insufficient_evidence():
       "follow_up_question": null
     }
     """
-    result = validate_agent_response(raw_llm, mode="research", valid_evidence_ids={"E1"})
+    result = validate_agent_response(
+        raw_llm, mode="research", valid_evidence_ids={"E1"}
+    )
     assert isinstance(result, ValidatedResearchResponse)
     assert result.insufficient_evidence
     assert len(result.citations) == 0
@@ -94,7 +103,9 @@ def test_validate_growth_brief_response():
       "insufficient_evidence": false
     }
     """
-    result = validate_agent_response(raw_llm, mode="growth_brief", valid_evidence_ids={"E1"})
+    result = validate_agent_response(
+        raw_llm, mode="growth_brief", valid_evidence_ids={"E1"}
+    )
     assert isinstance(result, ValidatedGrowthBriefResponse)
     assert result.title == "Self-Serve Activation Engine"
     assert result.problem == "Signup dropoff at onboarding step 2"
@@ -105,16 +116,16 @@ def test_validate_growth_brief_response():
     assert len(result.citations) == 1
 
 
-def test_validate_essay_response_and_word_count():
-    sample_essay = (
-        "# The Activation Advantage\n\n"
-        + "Building a sticky SaaS product requires understanding early user momentum [E1]. " * 20
-    )
+def test_validate_essay_response_within_word_range():
+    # Spec §8.4: accepted first-draft range is 1,150–1,350 words.
+    # 10-word sentence repeated 120 times = 1,200 words.
+    sentence = "Building a sticky SaaS product requires understanding early user momentum [E1]. "
+    sample_essay = "# The Activation Advantage\n\n" + sentence * 120
     raw_llm = f"""
     {{
       "title": "The Activation Advantage",
       "essay_markdown": {json.dumps(sample_essay)},
-      "approximate_word_count": 220,
+      "approximate_word_count": 1200,
       "writing_path": "actionable",
       "citations": [{{"evidence_id": "E1", "supports": "Early user momentum"}}],
       "insufficient_evidence": false
@@ -123,9 +134,28 @@ def test_validate_essay_response_and_word_count():
     result = validate_agent_response(raw_llm, mode="essay", valid_evidence_ids={"E1"})
     assert isinstance(result, ValidatedEssayResponse)
     assert result.title == "The Activation Advantage"
-    assert result.actual_word_count > 100
+    assert 1150 <= result.actual_word_count <= 1350
     assert result.writing_path == "actionable"
     assert len(result.citations) == 1
+
+
+def test_validate_essay_rejects_out_of_range_word_count():
+    # A 200-word draft violates the Ship 30 for 30 contract (1,150–1,350
+    # words) and must be rejected, not persisted (spec §8.4).
+    sample_essay = "Short essay. " * 20
+    raw_llm = f"""
+    {{
+      "title": "Too Short",
+      "essay_markdown": {json.dumps(sample_essay)},
+      "approximate_word_count": 200,
+      "writing_path": "actionable",
+      "citations": [],
+      "insufficient_evidence": false
+    }}
+    """
+    with pytest.raises(EssayLengthError) as excinfo:
+        validate_agent_response(raw_llm, mode="essay", valid_evidence_ids={"E1"})
+    assert excinfo.value.actual_words < 1150
 
 
 def test_validate_artifact_response():
@@ -137,7 +167,9 @@ def test_validate_artifact_response():
       "source_evidence_ids": ["E1", "E99"]
     }
     """
-    result = validate_agent_response(raw_llm, mode="artifact_markdown", valid_evidence_ids={"E1"})
+    result = validate_agent_response(
+        raw_llm, mode="artifact_markdown", valid_evidence_ids={"E1"}
+    )
     assert isinstance(result, ValidatedArtifactResponse)
     assert result.kind == "markdown"
     assert result.title == "Growth Checklist"
@@ -147,3 +179,8 @@ def test_validate_artifact_response():
 def test_count_words():
     assert count_words("Hello world! This is a test.") == 6
     assert count_words("") == 0
+
+
+def test_essay_word_bounds_match_spec():
+    # Guard: the enforced bounds must equal the spec §8.4 contract.
+    assert (ESSAY_MIN_WORDS, ESSAY_MAX_WORDS) == (1150, 1350)

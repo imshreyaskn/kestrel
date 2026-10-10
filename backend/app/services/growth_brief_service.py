@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.models.entities import GrowthBrief
+from backend.app.models.entities import ChatSession, GrowthBrief
 
 
 class GrowthBriefService:
@@ -63,9 +63,18 @@ class GrowthBriefService:
     async def get_growth_brief(
         db: AsyncSession,
         brief_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
     ) -> GrowthBrief | None:
-        """Retrieve growth brief by ID."""
+        """Retrieve growth brief by ID.
+
+        When user_id is supplied, the brief is only returned when its owning
+        session belongs to that user (spec §6.2: ownership check).
+        """
         stmt = select(GrowthBrief).where(GrowthBrief.id == brief_id)
+        if user_id is not None:
+            stmt = stmt.join(
+                ChatSession, GrowthBrief.session_id == ChatSession.id
+            ).where(ChatSession.user_id == user_id)
         result = await db.execute(stmt)
         return result.scalars().first()
 
@@ -73,16 +82,18 @@ class GrowthBriefService:
     async def update_growth_brief(
         db: AsyncSession,
         brief_id: uuid.UUID,
+        user_id: uuid.UUID | None = None,
         title: str | None = None,
         data_update: dict[str, Any] | None = None,
         status: str | None = None,
         expected_version: int | None = None,
     ) -> GrowthBrief:
         """
-        Update growth brief with optimistic version check.
+        Update growth brief with optimistic version check and (when user_id
+        is supplied) session ownership enforcement.
         Raises ValueError if expected_version does not match current version.
         """
-        brief = await GrowthBriefService.get_growth_brief(db, brief_id)
+        brief = await GrowthBriefService.get_growth_brief(db, brief_id, user_id=user_id)
         if not brief:
             raise KeyError(f"Growth brief {brief_id} not found")
 

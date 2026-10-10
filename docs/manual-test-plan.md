@@ -13,11 +13,16 @@ Before starting manual evaluation, ensure the local services are running:
 
 | Service | Address | Status Check |
 | :--- | :--- | :--- |
-| **PostgreSQL 16 + pgvector** | `localhost:5433` | `docker ps` shows `kestrel-postgres` healthy |
-| **Agent Gateway (Node 22)** | `localhost:8010` | `curl http://localhost:8010/health` returns `status: ok` |
+| **PostgreSQL 16 + pgvector** | internal (no host port by default) | `docker compose exec db pg_isready -U lenny -d lenny_growth` returns `accepting connections` |
+| **Agent Gateway (Node 22)** | internal (no host port by default) | `curl http://localhost:8000/api/v1/health/ready` reports `agent_gateway: up` (the API probes the gateway over the internal network) |
 | **FastAPI Backend** | `localhost:8000` | `curl http://localhost:8000/api/v1/health/ready` returns `status: ready` |
 | **Workbench Frontend** | `localhost:5173` | Browser opens Editorial Dossier UI |
 | **Host Ollama (Local LLM)** | `localhost:11434` | `ollama list` shows `qwen2.5:1.5b` and `embeddinggemma` |
+
+> Alembic migrations are applied automatically when the `api` container boots
+> (`alembic upgrade head` runs before `uvicorn` in the container entrypoint).
+> To expose debug ports for PostgreSQL (5433) and the gateway (8010), run:
+> `docker compose -f docker-compose.yml -f compose.dev.yml up -d`.
 
 ---
 
@@ -82,13 +87,13 @@ Before starting manual evaluation, ensure the local services are running:
 ### Scenario 6: Provider Switching & Canceling a Run
 1. In the Running Head, locate the Provider selector (`Local` / `Cloud`).
 2. Switch from `Local` to `Cloud` (or vice-versa).
-3. Notice the toast: *"Provider set to cloud — gemini-2.0-flash"*.
+3. Notice the toast: *"Provider set to cloud — gemini-3.5-flash-lite"*.
 4. Enter a prompt and submit.
 5. Immediately click **Strike the run** (or press `Escape`).
 6. **Verify:**
-   - The in-flight generation is aborted.
-   - A *"Run struck"* notice is bound to the manuscript: *"Nothing was bound to this session — the partial draft was discarded, and no citation was recorded."*
-   - No partial hallucinations or broken fragments are persisted.
+   - The in-flight generation is aborted in the UI.
+   - Reload the session: the assistant entry for the struck run shows a terminal cancelled state — **no partial draft, no citations, and no completed answer were persisted**. The user's own message remains in history (this is expected and matches the implementation spec §5.3).
+   - Note the documented limitation: the abort is client-side and server-side persistence cleanup; the gateway's provider call itself is not force-killed mid-flight, and its result is discarded.
 
 ### Scenario 7: Mobile & Responsive Layout
 1. Open Chrome DevTools (`F12`) and toggle device emulation (e.g. iPhone 14 or Pixel 7).

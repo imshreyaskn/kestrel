@@ -125,10 +125,14 @@ ALLOWED_URL_SCHEMES: set[str] = {"http", "https", "mailto", "data", "blob"}
 
 # Regex patterns for dangerous CSS features
 _CSS_IMPORT_RE = re.compile(r"@import\s+[^;]+;?", flags=re.IGNORECASE)
-_CSS_EXTERNAL_URL_RE = re.compile(r"url\s*\(\s*['\"]?(https?:|//)[^'\")]*['\"]?\s*\)", flags=re.IGNORECASE)
+_CSS_EXTERNAL_URL_RE = re.compile(
+    r"url\s*\(\s*['\"]?(https?:|//)[^'\")]*['\"]?\s*\)", flags=re.IGNORECASE
+)
 _CSS_EXPRESSION_RE = re.compile(r"expression\s*\([^)]*\)", flags=re.IGNORECASE)
 _CSS_BEHAVIOR_RE = re.compile(r"behavior\s*:[^;]+;?", flags=re.IGNORECASE)
-_STYLE_TAG_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", flags=re.IGNORECASE | re.DOTALL)
+_STYLE_TAG_RE = re.compile(
+    r"<style\b[^>]*>(.*?)</style>", flags=re.IGNORECASE | re.DOTALL
+)
 _BODY_TAG_RE = re.compile(r"<body\b[^>]*>(.*?)</body>", flags=re.IGNORECASE | re.DOTALL)
 
 
@@ -159,7 +163,9 @@ def sanitize_html(raw_html: str) -> str:
     # Build attribute allowlist dict for nh3
     tag_attribute_values = {}
     for tag in ALLOWED_TAGS:
-        tag_attribute_values[tag] = TAG_SPECIFIC_ATTRIBUTES.get(tag, GLOBAL_SAFE_ATTRIBUTES)
+        tag_attribute_values[tag] = TAG_SPECIFIC_ATTRIBUTES.get(
+            tag, GLOBAL_SAFE_ATTRIBUTES
+        )
 
     cleaned = nh3.clean(
         raw_html,
@@ -171,7 +177,9 @@ def sanitize_html(raw_html: str) -> str:
     return cleaned
 
 
-def build_sandboxed_preview_html(raw_content: str, title: str = "Artifact Preview") -> str:
+def build_sandboxed_preview_html(
+    raw_content: str, title: str = "Artifact Preview"
+) -> str:
     """
     Construct a complete, hermetic, sandboxed HTML document ready for rendering
     inside an <iframe sandbox="">.

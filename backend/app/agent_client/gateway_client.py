@@ -76,15 +76,21 @@ class AgentGatewayClient:
             if isinstance(item, dict):
                 evidence_dicts.append(item)
             else:
-                evidence_dicts.append({
+                item_dict: dict[str, Any] = {
                     "evidence_id": getattr(item, "evidence_id", "E?"),
                     "chunk_id": str(getattr(item, "chunk_id", "")),
                     "source_id": str(getattr(item, "source_id", "")),
                     "guest": getattr(item, "guest", None),
                     "episode_title": getattr(item, "episode_title", None),
                     "excerpt": getattr(item, "excerpt", ""),
-                    "supports": getattr(item, "supports", None),
-                })
+                }
+                supports_value = getattr(item, "supports", None)
+                if supports_value is not None:
+                    # Omit rather than send an explicit null: the gateway
+                    # schema treats supports as optional metadata, and a
+                    # JSON null is not the same as an absent key.
+                    item_dict["supports"] = supports_value
+                evidence_dicts.append(item_dict)
 
         context_list = [
             {"role": msg.get("role", "user"), "content": msg.get("content", "")}
@@ -125,11 +131,15 @@ class AgentGatewayClient:
                     await client.aclose()
 
             if response.status_code == 403:
-                raise PermissionError("Internal service token rejected by agent gateway")
+                raise PermissionError(
+                    "Internal service token rejected by agent gateway"
+                )
             if response.status_code >= 400:
                 err_body = response.text
                 logger.error(f"Gateway error {response.status_code}: {err_body}")
-                raise RuntimeError(f"Agent gateway returned status {response.status_code}: {err_body}")
+                raise RuntimeError(
+                    f"Agent gateway returned status {response.status_code}: {err_body}"
+                )
 
             data = response.json()
             return GatewayGenerationResult(
@@ -142,9 +152,21 @@ class AgentGatewayClient:
                 usage=data.get("usage"),
             )
 
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except httpx.TimeoutException as exc:
+            logger.error(
+                "Agent gateway timeout for request %s after %ss: %s",
+                req_id,
+                self.timeout,
+                exc,
+            )
+            raise TimeoutError(
+                f"Agent gateway did not respond within {self.timeout}s"
+            ) from exc
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             logger.error(f"Connection failure to agent gateway at {url}: {exc}")
-            raise ConnectionError(f"Could not connect to agent gateway at {url}: {exc}") from exc
+            raise ConnectionError(
+                f"Could not connect to agent gateway at {url}: {exc}"
+            ) from exc
 
 
 # Default global instance

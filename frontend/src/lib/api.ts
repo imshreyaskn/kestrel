@@ -277,8 +277,10 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ title }),
       });
-    } catch {
-      // safe fallback
+    } catch (err) {
+      // Surface the failure instead of swallowing it silently; the dossier
+      // rail keeps the previous title until a successful rename.
+      console.warn('Failed to rename session', sessionId, err);
     }
   },
 

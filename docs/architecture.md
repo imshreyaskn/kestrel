@@ -59,9 +59,10 @@ flowchart TD
 
 * **Decision (ADR 001):** Selected **Pi Coding Agent SDK (`@earendil-works/pi-ai`)** hosted in a lightweight Node.js 22 companion gateway over Claude Agent SDK.
 * **Empirical Spike Findings:**
-  1. **Multi-Provider First-Class Support:** Pi AI includes native providers for Ollama (`openai-completions`), Google Gemini (`googleProvider()`), Anthropic, and OpenAI under a unified typed interface.
-  2. **Streaming & Model Resolution:** Provides low-overhead streaming without requiring complex agentic loops for straightforward grounded generation.
-  3. **Node Runtime Isolation:** Contained inside `node:22-bookworm-slim` container, completely decoupling host developer Node versions (e.g., host Node 20) from gateway requirements.
+  1. **Multi-Provider First-Class Support:** Pi AI includes native providers for Ollama (`openai-completions`), Google Gemini (`googleProvider()`), Anthropic (`anthropicProvider()`), and OpenAI (`openaiProvider()`) under a unified typed interface. All four are registered in the gateway.
+  2. **Provider verification status:** Gemini and Ollama are verified live end-to-end. Anthropic and OpenAI routing is implemented and type-checked (`tsc --noEmit` clean in the Node 22 container) but has **not** been live-verified in this repository because no evaluator API keys were available during hardening.
+  3. **Model resolution is exact-match only:** a requested `model_id` that is absent from the provider catalog returns HTTP 404 from the gateway and 422 from the API's server-side allowlist — there is no silent substitution.
+  4. **Node Runtime Isolation:** Contained inside `node:22-bookworm-slim` container, completely decoupling host developer Node versions (e.g., host Node 20) from gateway requirements.
 
 ---
 
@@ -206,9 +207,9 @@ sequenceDiagram
    - Restrictive Content Security Policy (CSP) injected:
      `default-src 'none'; img-src data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'`.
 3. **Session Ownership Invariant:**
-   - Every session, brief, and artifact query filters by `user_id == settings.DEMO_USER_ID`. Multi-session cross-talk is structurally impossible.
+   - Every session, brief, and artifact query filters by `user_id == settings.DEMO_USER_ID` via a join to `chat_sessions` (sessions directly; briefs/artifacts through their owning session). Cross-user access is indistinguishable from a missing record (HTTP 404).
 4. **Optimistic Concurrency Invariant:**
-   - Growth briefs and artifacts contain monotonically increasing integer version numbers. Updates verify `expected_version` and return HTTP 409 Conflict if stale.
+   - Growth briefs and artifacts contain monotonically increasing integer version numbers. `PATCH` requires `expected_version`; a stale value returns HTTP 409 Conflict. Requests without `expected_version` are rejected with HTTP 422.
 
 ---
 
@@ -218,6 +219,6 @@ sequenceDiagram
 | :--- | :--- | :--- | :--- |
 | **Local Ollama Offline** | 1.5s timeout on probe | Health endpoint reports degraded; provider indicator shows offline. | UI disables local inference and guides evaluator to start Ollama or switch to Cloud. |
 | **Cloud API Key Missing** | Environment validation | Cloud provider marked unavailable. | Local Ollama remains active; user informed cloud key is unconfigured. |
-| **Insufficient Evidence in Transcripts** | RRF dense similarity < threshold | Pipeline bypasses generation and flags `insufficient_evidence: true`. | Displays *"Not in the archive"* notice card with query refinement suggestions. |
-| **Reader Cancels In-Flight Run** | "Strike the run" action | SSE stream aborted; transaction rolled back. | Partial model draft is discarded; no partial message or fake citation is persisted. |
+| **Insufficient Evidence in Transcripts** | RRF fusion returns zero qualifying chunks (server-side check, before generation) | Pipeline bypasses the gateway entirely and returns a `insufficient_evidence: true` abstention notice ("Not in the archive"). | Displays *"Not in the archive"* notice card with query refinement suggestions. No LLM call is made, so nothing can be fabricated. |
+| **Reader Cancels In-Flight Run** | "Strike the run" action / browser disconnect | SSE generator closed; the pending assistant row is set to terminal `status='cancelled'` with `error_code='CANCELLED'` and empty content. | Partial model draft is discarded; nothing generated is persisted as a complete answer. The already-saved user message remains in history (per spec §5.3). True mid-flight provider cancellation is a documented limitation: the gateway completes its provider-side call and the result is discarded. |
 | **Concurrent Brief Modification** | `expected_version != version` | FastAPI raises HTTP 409 Conflict. | UI displays *"Version conflict: please reload the latest brief"*; prevents overwrite. |

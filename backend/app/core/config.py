@@ -35,12 +35,17 @@ class Settings(BaseSettings):
     DEFAULT_PROVIDER: Literal["local", "cloud"] = "local"
     DEFAULT_CLOUD_PROVIDER: Literal["gemini", "anthropic", "openai"] = "gemini"
 
-    # Cloud Providers
+    # Cloud Providers (catalog-verified against the installed pi-ai Google
+    # provider data; gemini-3.8-flash is the production workhorse default,
+    # gemini-3.5-flash-lite the high-efficiency tier)
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-3.8-flash"
 
     ANTHROPIC_API_KEY: str | None = None
-    ANTHROPIC_MODEL: str = "claude-sonnet-latest"
+    # Catalog-verified against the installed @earendil-works/pi-ai provider
+    # data (claude-sonnet-latest is not present in the catalog; pinned ID
+    # verified on 2026-10-10 inside the gateway container).
+    ANTHROPIC_MODEL: str = "claude-sonnet-5"
 
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o"
