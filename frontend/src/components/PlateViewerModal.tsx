@@ -3,12 +3,13 @@ import { ArtifactData } from '../types';
 import { CSP_HEADER } from '../lib/demoData';
 import { MarkdownViewer } from './MarkdownViewer';
 import { useFocusTrap } from '../lib/useFocusTrap';
-import { prefersReducedMotion } from '../lib/motion';
+import { prefersReducedMotion, flip } from '../lib/motion';
 
 interface PlateViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   artifact: ArtifactData | null;
+  originRect?: DOMRect | null;
   onRevise: (artifact: ArtifactData) => void;
   onCopySuccess: (msg: string) => void;
 }
@@ -17,6 +18,7 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
   isOpen,
   onClose,
   artifact,
+  originRect,
   onRevise,
   onCopySuccess,
 }) => {
@@ -28,8 +30,16 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setViewMode('preview');
+      if (originRect && modalRef.current) {
+        requestAnimationFrame(() => {
+          const frameEl = modalRef.current?.querySelector<HTMLElement>('.pv-frame, .pv-src, .pv-doc');
+          if (frameEl) {
+            flip(frameEl, originRect, { duration: 380 });
+          }
+        });
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, originRect]);
 
   const requestClose = useCallback(() => {
     if (prefersReducedMotion() || isClosing) {

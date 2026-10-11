@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
+import { prefersReducedMotion } from '../lib/motion';
 
 interface LeaderLinesProps {
   sheetRef: React.RefObject<HTMLElement>;
@@ -6,6 +7,7 @@ interface LeaderLinesProps {
 
 export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const knownNotes = useRef<Set<string>>(new Set());
 
   const drawLines = useCallback((animateIds?: string[]) => {
     if (!svgRef.current || !sheetRef.current) return;
@@ -85,19 +87,28 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       dot.setAttribute('cx', String(x2));
       dot.setAttribute('cy', String(y2));
 
-      if (animateIds && animateIds.includes(noteId)) {
+      const isFirstAppearance = !knownNotes.current.has(noteId);
+      if (isFirstAppearance) {
+        knownNotes.current.add(noteId);
+      }
+
+      const shouldAnimate =
+        (isFirstAppearance || (animateIds && animateIds.includes(noteId))) &&
+        !prefersReducedMotion();
+
+      if (shouldAnimate) {
         const len = path.getTotalLength();
         path.style.transition = 'none';
         path.style.strokeDasharray = String(len);
         path.style.strokeDashoffset = String(len);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            path.style.transition = 'stroke-dashoffset 1s ease .25s';
+            path.style.transition = 'stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s';
             path.style.strokeDashoffset = '0';
             setTimeout(() => {
               path.style.transition = '';
               path.style.strokeDasharray = '';
-            }, 1500);
+            }, 1200);
           });
         });
       }
@@ -167,7 +178,10 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       if (btn?.dataset.note) {
         const note = document.getElementById(btn.dataset.note);
         if (note) {
-          note.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          note.scrollIntoView({
+            block: 'center',
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          });
           note.classList.remove('flash');
           void note.offsetWidth;
           note.classList.add('flash');
@@ -180,7 +194,10 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       if (note?.id) {
         const b = document.querySelector<HTMLElement>(`.sn-ref[data-note="${note.id}"]`);
         if (b) {
-          b.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          b.scrollIntoView({
+            block: 'center',
+            behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          });
         }
       }
     };
@@ -189,9 +206,16 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
     document.addEventListener('mouseout', handleMouseOut);
     document.addEventListener('click', handleClick);
 
-    // MutationObserver to redraw when new entries/elements appear
+    // MutationObserver to redraw when new entries/elements appear with rAF coalescing
+    let rAfQueued = false;
+    let rAfId: number | null = null;
     const observer = new MutationObserver(() => {
-      drawLines();
+      if (rAfQueued) return;
+      rAfQueued = true;
+      rAfId = requestAnimationFrame(() => {
+        rAfQueued = false;
+        drawLines();
+      });
     });
 
     if (sheetRef.current) {
@@ -202,6 +226,8 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
     }
 
     return () => {
+      clearTimeout(resizeTimer);
+      if (rAfId !== null) cancelAnimationFrame(rAfId);
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('mouseover', handleMouseOver);
       document.removeEventListener('mouseout', handleMouseOut);

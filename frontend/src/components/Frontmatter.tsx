@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ComposeMode, ArtifactKind } from '../types';
 import { stampPress } from '../lib/motion';
+import { FALCON_ASCII } from '../lib/asciiArt';
 
 interface FrontmatterProps {
   onSubmit: (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => void;
@@ -56,26 +57,31 @@ export const Frontmatter: React.FC<FrontmatterProps> = ({
   return (
     <section className="frontmatter" id="frontmatter" aria-label="New dossier">
       <div className="fm-col">
-        <h1 className="hero-h" id="heroH">
-          <span className="hero-row">
-            <span className="w">What</span> <span className="w">are</span> <span className="w">you</span>
-          </span>
-          <span className="hero-row">
-            <span className="w wonk">working</span>
-            <button
-              type="button"
-              className="star sn-ref"
-              data-note="land-1"
-              data-n="*"
-              aria-label="Read the margin note"
-            >
-              ✳
-            </button>
-          </span>
-          <span className="hero-row">
-            <span className="w">through?</span>
-          </span>
-        </h1>
+        <div className="hero-head-anchor">
+          <div className="hero-ascii-falcon" aria-hidden="true" role="presentation">
+            <pre>{FALCON_ASCII}</pre>
+          </div>
+          <h1 className="hero-h" id="heroH">
+            <span className="hero-row">
+              <span className="w">What</span> <span className="w">are</span> <span className="w">you</span>
+            </span>
+            <span className="hero-row">
+              <span className="w wonk">working</span>
+              <button
+                type="button"
+                className="star sn-ref"
+                data-note="land-1"
+                data-n="*"
+                aria-label="Read the margin note"
+              >
+                ✳
+              </button>
+            </span>
+            <span className="hero-row">
+              <span className="w">through?</span>
+            </span>
+          </h1>
+        </div>
         <p className="hero-lede">
           An evidence-first research companion. Every claim in this dossier is typeset with its
           source in the margin — tap a number to read the exact passage it rests on, then decide for

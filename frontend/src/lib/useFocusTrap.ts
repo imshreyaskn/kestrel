@@ -8,13 +8,16 @@ export const FOCUSABLE_SELECTOR =
  * Returns true if the key event was trapped/handled.
  */
 export function trapFocusKeydown(
-  e: { key: string; shiftKey?: boolean; preventDefault: () => void },
+  e: { key: string; shiftKey?: boolean; preventDefault: () => void; stopPropagation?: () => void },
   container: HTMLElement | null,
   activeEl: HTMLElement | null,
   onEscape?: () => void
 ): boolean {
   if (e.key === 'Escape' && onEscape) {
     e.preventDefault();
+    if (typeof (e as any).stopPropagation === 'function') {
+      (e as any).stopPropagation();
+    }
     onEscape();
     return true;
   }
@@ -31,6 +34,16 @@ export function trapFocusKeydown(
 
     const first = focusableElements[0];
     const last = focusableElements[focusableElements.length - 1];
+
+    if (!activeEl || !container.contains(activeEl)) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        last.focus();
+      } else {
+        first.focus();
+      }
+      return true;
+    }
 
     if (e.shiftKey && activeEl === first) {
       e.preventDefault();

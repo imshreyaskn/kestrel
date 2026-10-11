@@ -14,6 +14,7 @@ import {
 } from './types';
 import { ApiError, api, isUuid } from './lib/api';
 import { buildAnswerData, buildCitations, entriesFromHistory, modeToLabel } from './lib/citeInline';
+import { prefersReducedMotion, strikeCard, shakeConflict } from './lib/motion';
 import { TOUR_ARTIFACTS, TOUR_BRIEF, TOUR_SESSIONS } from './lib/demoData';
 import { RunningHead } from './components/RunningHead';
 import { IndexRail } from './components/IndexRail';
@@ -70,6 +71,7 @@ export const App: React.FC = () => {
   const [activeBrief, setActiveBrief] = useState<GrowthBriefData | null>(null);
   const [isPlateOpen, setIsPlateOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
+  const [plateOriginRect, setPlateOriginRect] = useState<DOMRect | null>(null);
 
   // Composing Run State
   const [isComposing, setIsComposing] = useState(false);
@@ -84,6 +86,16 @@ export const App: React.FC = () => {
   const sheetRef = useRef<HTMLElement>(null);
   const streamCtlRef = useRef<{ cancel: () => void } | null>(null);
   const lastRunRef = useRef<{ text: string; mode: ComposeMode; format: ArtifactKind } | null>(null);
+  const isStrikingRef = useRef(false);
+  const strikeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (strikeTimerRef.current !== null) {
+        clearTimeout(strikeTimerRef.current);
+      }
+    };
+  }, []);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
@@ -141,43 +153,63 @@ export const App: React.FC = () => {
   // message `cancelled` — no partial draft is persisted.
   // ---------------------------------------------------------------
   const handleStrikeRun = useCallback(() => {
+    if (isStrikingRef.current) return;
+    isStrikingRef.current = true;
+
     streamCtlRef.current?.cancel();
     streamCtlRef.current = null;
-    setIsComposing(false);
-    setComposingSteps([]);
 
-    if (activeSessionId) {
-      appendEntry(activeSessionId, {
-        id: 'struck-' + Date.now(),
-        kind: 'insufficient',
-        noticeData: {
-          kick: 'Run struck',
-          paragraphs: [
-            'Nothing was bound to this session — the partial draft was discarded, and no citation was recorded.',
-          ],
-          action: lastRunRef.current
-            ? { label: 'Recompose →', actionKey: 'prefill', prefill: lastRunRef.current.text }
-            : undefined,
-          stamp: 'struck by the reader · nothing persisted',
-        },
-        createdAt: new Date().toISOString(),
-      });
+    const finishStrike = () => {
+      isStrikingRef.current = false;
+      if (strikeTimerRef.current !== null) {
+        clearTimeout(strikeTimerRef.current);
+        strikeTimerRef.current = null;
+      }
+      setIsComposing(false);
+      setComposingSteps([]);
+
+      if (activeSessionId) {
+        appendEntry(activeSessionId, {
+          id: 'struck-' + Date.now(),
+          kind: 'insufficient',
+          noticeData: {
+            kick: 'Run struck',
+            paragraphs: [
+              'Nothing was bound to this session — the partial draft was discarded, and no citation was recorded.',
+            ],
+            action: lastRunRef.current
+              ? { label: 'Recompose →', actionKey: 'prefill', prefill: lastRunRef.current.text }
+              : undefined,
+            stamp: 'struck by the reader · nothing persisted',
+          },
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      announce('Run struck — nothing was persisted.');
+      showToast('Run struck — nothing was persisted', 'danger');
+    };
+
+    const compEl = document.querySelector<HTMLElement>('.composing');
+    if (compEl && strikeCard(compEl)) {
+      strikeTimerRef.current = window.setTimeout(finishStrike, 400);
+    } else {
+      finishStrike();
     }
-
-    announce('Run struck — nothing was persisted.');
-    showToast('Run struck — nothing was persisted');
   }, [activeSessionId, announce, appendEntry, showToast]);
 
   // Global Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isComposing && !isBriefOpen && !isPlateOpen && !isMobileRailOpen) {
+        // Modals own their own accessible Escape listener to play reverse closing animations.
+        if (isBriefOpen || isPlateOpen) {
+          return;
+        }
+        if (isComposing && !isMobileRailOpen) {
           handleStrikeRun();
           return;
         }
-        setIsBriefOpen(false);
-        setIsPlateOpen(false);
         setIsMobileRailOpen(false);
         return;
       }
@@ -577,17 +609,27 @@ export const App: React.FC = () => {
         return;
       }
 
-      appendEntry(currentSession!.id, {
-        id: 'q-' + Date.now(),
-        kind: 'query',
-        queryText: text,
-        queryMeta: {
-          time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-          modeLabel: modeToLabel(mode),
-          hasContext: !!productContext,
-        },
-        createdAt: new Date().toISOString(),
-      });
+      const appendQueryEntry = () => {
+        appendEntry(currentSession!.id, {
+          id: 'q-' + Date.now(),
+          kind: 'query',
+          queryText: text,
+          queryMeta: {
+            time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+            modeLabel: modeToLabel(mode),
+            hasContext: !!productContext,
+          },
+          createdAt: new Date().toISOString(),
+        });
+      };
+
+      if ('startViewTransition' in document && !prefersReducedMotion()) {
+        (document as any).startViewTransition(() => {
+          appendQueryEntry();
+        });
+      } else {
+        appendQueryEntry();
+      }
 
       setTimeout(() => {
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
@@ -627,6 +669,10 @@ export const App: React.FC = () => {
         announce(`Brief saved. Version ${saved.version}.`);
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
+          const chipEl = document.getElementById('impChip');
+          if (chipEl) {
+            shakeConflict(chipEl);
+          }
           showToast('Version conflict: please reload the latest brief', 'danger');
           announce('Version conflict. Reload the latest brief.');
         } else {
@@ -652,10 +698,11 @@ export const App: React.FC = () => {
   // Plates: real artifacts from the session, tour artifacts otherwise.
   // ---------------------------------------------------------------
   const handleExaminePlate = useCallback(
-    (artId: string) => {
+    (artId: string, originRect?: DOMRect) => {
       const all = sessions.flatMap((s) => s.artifacts);
       const art = all.find((a) => a.id === artId) || TOUR_ARTIFACTS[artId];
       if (art) {
+        if (originRect) setPlateOriginRect(originRect);
         setActiveArtifact(art);
         setIsPlateOpen(true);
       } else {
@@ -885,8 +932,12 @@ export const App: React.FC = () => {
       {/* Plate Viewer — Sandboxed Deliverable Modal */}
       <PlateViewerModal
         isOpen={isPlateOpen}
-        onClose={() => setIsPlateOpen(false)}
+        onClose={() => {
+          setIsPlateOpen(false);
+          setPlateOriginRect(null);
+        }}
         artifact={activeArtifact}
+        originRect={plateOriginRect}
         onRevise={(art) => {
           setIsPlateOpen(false);
           setActiveMode('artifact');

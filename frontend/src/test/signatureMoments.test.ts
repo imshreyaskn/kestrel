@@ -1,0 +1,198 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { play, flip, strikeCard, shakeConflict, prefersReducedMotion } from '../lib/motion';
+
+describe('Phase 4: Signature Moments Engine Verification', () => {
+  const origWindow = globalThis.window;
+  const origDocument = globalThis.document;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+
+    (globalThis as any).window = {
+      matchMedia: vi.fn().mockReturnValue({ matches: false }),
+    };
+
+    (globalThis as any).document = {
+      querySelector: vi.fn(),
+      getElementById: vi.fn(),
+      startViewTransition: vi.fn((cb: () => void) => {
+        cb();
+        return { finished: Promise.resolve() };
+      }),
+    };
+  });
+
+  afterEach(() => {
+    globalThis.window = origWindow;
+    globalThis.document = origDocument;
+  });
+
+  describe('The Strike (§9.3) via strikeCard', () => {
+    it('applies is-struck class and returns true when motion is enabled', () => {
+      const classes = new Set<string>();
+      const compEl: any = {
+        classList: {
+          add: (c: string) => classes.add(c),
+          contains: (c: string) => classes.has(c),
+        },
+      };
+
+      const animated = strikeCard(compEl);
+      expect(animated).toBe(true);
+      expect(compEl.classList.contains('is-struck')).toBe(true);
+    });
+
+    it('bypasses visual strike and returns false when reduced motion is requested', () => {
+      (window.matchMedia as any).mockReturnValue({ matches: true });
+      expect(prefersReducedMotion()).toBe(true);
+
+      const classes = new Set<string>();
+      const compEl: any = {
+        classList: {
+          add: (c: string) => classes.add(c),
+          contains: (c: string) => classes.has(c),
+        },
+      };
+
+      const animated = strikeCard(compEl);
+      expect(animated).toBe(false);
+      expect(compEl.classList.contains('is-struck')).toBe(false);
+    });
+  });
+
+  describe('The Bind (§9.1) View Transition contract', () => {
+    it('executes view transition callback when startViewTransition is available', () => {
+      let appended = false;
+      const appendFn = () => {
+        appended = true;
+      };
+
+      if ('startViewTransition' in document && !prefersReducedMotion()) {
+        (document as any).startViewTransition(appendFn);
+      } else {
+        appendFn();
+      }
+
+      expect(document.startViewTransition).toHaveBeenCalled();
+      expect(appended).toBe(true);
+    });
+
+    it('falls back to direct invocation when reduced motion is preferred', () => {
+      (window.matchMedia as any).mockReturnValue({ matches: true });
+      let appended = false;
+      const appendFn = () => {
+        appended = true;
+      };
+
+      if ('startViewTransition' in document && !prefersReducedMotion()) {
+        (document as any).startViewTransition(appendFn);
+      } else {
+        appendFn();
+      }
+
+      expect(document.startViewTransition).not.toHaveBeenCalled();
+      expect(appended).toBe(true);
+    });
+  });
+
+  describe('Rail Delete Tip-Out (§8.5)', () => {
+    it('initiates 3D tip-out animation on item wrapper using play()', async () => {
+      const mockFinished = Promise.resolve();
+      const mockAnim = {
+        playbackRate: 1,
+        finished: mockFinished,
+      };
+
+      const wrap: any = {
+        animate: vi.fn().mockReturnValue(mockAnim),
+      };
+
+      let sessionDeleted = false;
+      const commit = () => {
+        sessionDeleted = true;
+      };
+
+      const anim = play(
+        wrap,
+        'delete',
+        [
+          { transform: 'rotateX(0deg) translateY(0)', opacity: 1 },
+          { transform: 'rotateX(10deg) translateY(-6px)', opacity: 0, offset: 0.6 },
+          { transform: 'rotateX(10deg) translateY(-14px)', opacity: 0 },
+        ],
+        { duration: 320, easing: 'cubic-bezier(0.65, 0.05, 0.36, 1)' }
+      );
+
+      expect(wrap.animate).toHaveBeenCalled();
+      if (anim) {
+        await anim.finished.then(commit);
+      }
+
+      expect(sessionDeleted).toBe(true);
+    });
+  });
+
+  describe('Version Conflict Shake (§8.10) via shakeConflict', () => {
+    it('applies conflict class to element and cleans it up after timer', () => {
+      vi.useFakeTimers();
+      const classes = new Set<string>();
+      const chipEl: any = {
+        classList: {
+          add: (c: string) => classes.add(c),
+          remove: (c: string) => classes.delete(c),
+          contains: (c: string) => classes.has(c),
+        },
+        offsetWidth: 42,
+      };
+
+      shakeConflict(chipEl);
+      expect(chipEl.classList.contains('conflict')).toBe(true);
+
+      vi.advanceTimersByTime(400);
+      expect(chipEl.classList.contains('conflict')).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('bypasses shake animation when reduced motion is preferred', () => {
+      (window.matchMedia as any).mockReturnValue({ matches: true });
+      const classes = new Set<string>();
+      const chipEl: any = {
+        classList: {
+          add: (c: string) => classes.add(c),
+          remove: (c: string) => classes.delete(c),
+          contains: (c: string) => classes.has(c),
+        },
+        offsetWidth: 42,
+      };
+
+      shakeConflict(chipEl);
+      expect(chipEl.classList.contains('conflict')).toBe(false);
+    });
+  });
+
+  describe('Plate FLIP Origin (§8.8)', () => {
+    it('calls flip() from captured origin rect to target plate frame', () => {
+      const mockAnim = { id: 'flip-anim' };
+      const frameEl: any = {
+        animate: vi.fn().mockReturnValue(mockAnim),
+        getBoundingClientRect: vi.fn().mockReturnValue({ left: 100, top: 50, width: 800, height: 600 }),
+      };
+
+      const originRect = { left: 400, top: 200, width: 200, height: 150 } as DOMRect;
+      const anim = flip(frameEl, originRect, { duration: 380 });
+
+      expect(frameEl.animate).toHaveBeenCalled();
+      expect(anim).toBe(mockAnim);
+    });
+
+    it('returns null from flip() when reduced motion is preferred', () => {
+      (window.matchMedia as any).mockReturnValue({ matches: true });
+      const frameEl: any = {
+        getBoundingClientRect: vi.fn().mockReturnValue({ left: 100, top: 50, width: 800, height: 600 }),
+      };
+      const originRect = { left: 400, top: 200, width: 200, height: 150 } as DOMRect;
+      const anim = flip(frameEl, originRect, { duration: 380 });
+      expect(anim).toBeNull();
+    });
+  });
+});

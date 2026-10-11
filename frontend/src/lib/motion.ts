@@ -147,3 +147,24 @@ export function settleEntry(entryEl: HTMLElement): void {
     entryEl.classList.add('is-arrived');
   });
 }
+
+/**
+ * §9.3 The Strike — applies the oxblood strike-rule and grayscale fade
+ * to the composing card. Returns true if animated, false if reduced motion.
+ */
+export function strikeCard(el: HTMLElement): boolean {
+  if (prefersReducedMotion()) return false;
+  el.classList.add('is-struck');
+  return true;
+}
+
+/**
+ * §8.10 Version Conflict — shakes the impression chip horizontally (3 oscillations, 320ms).
+ */
+export function shakeConflict(el: HTMLElement): void {
+  if (prefersReducedMotion()) return;
+  el.classList.remove('conflict');
+  void el.offsetWidth;
+  el.classList.add('conflict');
+  setTimeout(() => el.classList.remove('conflict'), 350);
+}

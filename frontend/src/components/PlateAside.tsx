@@ -5,7 +5,7 @@ import { CSP_HEADER } from '../lib/demoData';
 interface PlateAsideProps {
   artifact: ArtifactData;
   plateNumber: string;
-  onExamine: () => void;
+  onExamine: (fromRect?: DOMRect) => void;
 }
 
 export const PlateAside: React.FC<PlateAsideProps> = ({
@@ -34,7 +34,15 @@ export const PlateAside: React.FC<PlateAsideProps> = ({
           </span>
         </div>
         <div className="plate-open">
-          <button type="button" className="tbtn" onClick={onExamine}>
+          <button
+            type="button"
+            className="tbtn"
+            onClick={(e) => {
+              const plateIn = (e.currentTarget as HTMLElement).closest<HTMLElement>('.plate-in');
+              const rect = plateIn ? plateIn.getBoundingClientRect() : undefined;
+              onExamine(rect);
+            }}
+          >
             Examine →
           </button>
         </div>

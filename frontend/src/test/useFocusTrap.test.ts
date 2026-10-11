@@ -13,6 +13,7 @@ describe('useFocusTrap and trapFocusKeydown', () => {
     const btn2: any = { id: 'btn2', offsetParent: {}, focus: vi.fn() };
     const container: any = {
       querySelectorAll: vi.fn().mockReturnValue([btn1, btn2]),
+      contains: vi.fn().mockReturnValue(true),
     };
 
     const preventDefault = vi.fn();
@@ -32,6 +33,7 @@ describe('useFocusTrap and trapFocusKeydown', () => {
     const btn2: any = { id: 'btn2', offsetParent: {}, focus: vi.fn() };
     const container: any = {
       querySelectorAll: vi.fn().mockReturnValue([btn1, btn2]),
+      contains: vi.fn().mockReturnValue(true),
     };
 
     const preventDefault = vi.fn();
@@ -62,15 +64,61 @@ describe('useFocusTrap and trapFocusKeydown', () => {
     expect(onEscape).toHaveBeenCalledTimes(1);
   });
 
-  it('returns false for non-navigation keys', () => {
+  it('redirects out-of-container focus back into modal on Tab', () => {
+    const btn1: any = { id: 'btn1', offsetParent: {}, focus: vi.fn() };
+    const btn2: any = { id: 'btn2', offsetParent: {}, focus: vi.fn() };
+    const container: any = {
+      querySelectorAll: vi.fn().mockReturnValue([btn1, btn2]),
+      contains: vi.fn().mockReturnValue(false), // focus is outside!
+    };
+
     const preventDefault = vi.fn();
     const handled = trapFocusKeydown(
-      { key: 'Enter', preventDefault },
-      null,
+      { key: 'Tab', shiftKey: false, preventDefault },
+      container,
+      null // No active element or outside
+    );
+
+    expect(handled).toBe(true);
+    expect(preventDefault).toHaveBeenCalled();
+    expect(btn1.focus).toHaveBeenCalled();
+  });
+
+  it('redirects out-of-container focus to last element on Shift+Tab', () => {
+    const btn1: any = { id: 'btn1', offsetParent: {}, focus: vi.fn() };
+    const btn2: any = { id: 'btn2', offsetParent: {}, focus: vi.fn() };
+    const container: any = {
+      querySelectorAll: vi.fn().mockReturnValue([btn1, btn2]),
+      contains: vi.fn().mockReturnValue(false),
+    };
+
+    const preventDefault = vi.fn();
+    const handled = trapFocusKeydown(
+      { key: 'Tab', shiftKey: true, preventDefault },
+      container,
       null
     );
 
-    expect(handled).toBe(false);
-    expect(preventDefault).not.toHaveBeenCalled();
+    expect(handled).toBe(true);
+    expect(preventDefault).toHaveBeenCalled();
+    expect(btn2.focus).toHaveBeenCalled();
+  });
+
+  it('stops propagation when Escape is handled', () => {
+    const onEscape = vi.fn();
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    const handled = trapFocusKeydown(
+      { key: 'Escape', preventDefault, stopPropagation },
+      null,
+      null,
+      onEscape
+    );
+
+    expect(handled).toBe(true);
+    expect(preventDefault).toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(onEscape).toHaveBeenCalled();
   });
 });

@@ -13,7 +13,7 @@ interface ManuscriptProps {
   onStrikeRun: () => void;
   onOpenBrief: () => void;
   onSetEssay: (prompt: string) => void;
-  onExaminePlate: (artId: string) => void;
+  onExaminePlate: (artId: string, fromRect?: DOMRect) => void;
   onPrefillQuery: (text: string) => void;
   onRetryLast: () => void;
 }
@@ -98,10 +98,12 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
   return (
     <section className="manuscript" id="manuscript" aria-label="Dossier entries">
       <div className="entries" id="entries" ref={entriesRef}>
-        {entries.map((entry) => {
+        {entries.map((entry, index) => {
+          const staggerStyle = { ['--i' as string]: Math.min(index, 5) };
+
           if (entry.kind === 'blank') {
             return (
-              <article key={entry.id} className="entry">
+              <article key={entry.id} className="entry" style={staggerStyle}>
                 <div className="blank">
                   <div className="blank-orn" aria-hidden="true">
                     ¶
@@ -119,7 +121,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
 
           if (entry.kind === 'query') {
             return (
-              <article key={entry.id} className="entry">
+              <article key={entry.id} className="entry" style={staggerStyle}>
                 <div className="e-kick">
                   <span className="sc kick">
                     Query — {entry.queryMeta?.time || 'Just now'}
@@ -141,7 +143,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
           if (entry.kind === 'insufficient' || entry.kind === 'notice') {
             const not = entry.noticeData;
             return (
-              <article key={entry.id} className="entry">
+              <article key={entry.id} className="entry" style={staggerStyle}>
                 <div className="not cf">
                   {not?.kick && <p className="sc kick not-kick">{not.kick}</p>}
                   {not?.paragraphs.map((p, pIdx) => (
@@ -190,7 +192,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                     <PlateAside
                       artifact={entry.artifact}
                       plateNumber="I"
-                      onExamine={() => onExaminePlate(entry.artifact!.id)}
+                      onExamine={(rect) => onExaminePlate(entry.artifact!.id, rect)}
                     />
                   )}
                 </div>
@@ -201,7 +203,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
           if (entry.kind === 'answer' && entry.answerData) {
             const ans = entry.answerData;
             return (
-              <article key={entry.id} className="entry">
+              <article key={entry.id} className="entry" style={staggerStyle}>
                 <div className="a-body cf">
                   {/* Lead paragraph */}
                   {ans.lead && (
@@ -247,7 +249,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                     <PlateAside
                       artifact={entry.artifact}
                       plateNumber="I"
-                      onExamine={() => onExaminePlate(entry.artifact!.id)}
+                      onExamine={(rect) => onExaminePlate(entry.artifact!.id, rect)}
                     />
                   )}
                 </div>
@@ -288,6 +290,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                 <span className="sc kick">Composing</span>
                 <button type="button" className="strike" onClick={onStrikeRun}>
                   strike this run
+                  <span className="esc-keycap" aria-hidden="true">esc</span>
                 </button>
               </div>
               <ol className="steps">

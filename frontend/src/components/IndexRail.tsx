@@ -1,5 +1,6 @@
 import React from 'react';
 import { SessionData } from '../types';
+import { play } from '../lib/motion';
 
 interface IndexRailProps {
   sessions: SessionData[];
@@ -22,6 +23,32 @@ export const IndexRail: React.FC<IndexRailProps> = ({
 }) => {
   const openNow = sessions.filter((s) => s.kind === 'live');
   const earlier = sessions.filter((s) => s.kind === 'demo');
+
+  const handleDelete = (e: React.MouseEvent<HTMLButtonElement>, sessionId: string) => {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const wrap = btn.closest<HTMLElement>('.rl-item-wrap');
+    const anim = wrap
+      ? play(
+          wrap,
+          'delete',
+          [
+            { transform: 'rotateX(0deg) translateY(0)', opacity: 1 },
+            { transform: 'rotateX(10deg) translateY(-6px)', opacity: 0, offset: 0.6 },
+            { transform: 'rotateX(10deg) translateY(-14px)', opacity: 0 },
+          ],
+          { duration: 320, easing: 'cubic-bezier(0.65, 0.05, 0.36, 1)' }
+        )
+      : null;
+    const commit = () => onDeleteSession(sessionId);
+    if (anim) {
+      anim.finished.then(commit).catch(commit);
+    } else {
+      commit();
+    }
+  };
 
   return (
     <>
@@ -69,10 +96,7 @@ export const IndexRail: React.FC<IndexRailProps> = ({
                       className="rl-del"
                       aria-label={`Delete dossier “${s.title}”`}
                       title="Delete this dossier and everything bound to it"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteSession(s.id);
-                      }}
+                      onClick={(e) => handleDelete(e, s.id)}
                     >
                       ×
                     </button>
