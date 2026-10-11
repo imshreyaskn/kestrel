@@ -18,6 +18,24 @@ from backend.app.core.config import settings
 logger = logging.getLogger("kestrel.gateway_client")
 
 
+class GatewayConfigError(RuntimeError):
+    """Missing API key or provider misconfiguration on agent gateway (non-retryable)."""
+
+    retryable = False
+
+
+class PayloadTooLargeError(RuntimeError):
+    """Generation payload exceeded gateway body limit (413, non-retryable)."""
+
+    retryable = False
+
+
+class ModelNotAllowedError(RuntimeError):
+    """Gateway rejected model (404 / model_not_allowed, non-retryable)."""
+
+    retryable = False
+
+
 @dataclass
 class GatewayGenerationResult:
     request_id: str
@@ -27,6 +45,7 @@ class GatewayGenerationResult:
     raw_response: str
     latency_ms: float
     usage: dict[str, Any] | None = None
+    stop_reason: str | None = None
 
 
 class AgentGatewayClient:
@@ -130,15 +149,43 @@ class AgentGatewayClient:
                 if close_client:
                     await client.aclose()
 
-            if response.status_code == 403:
-                raise PermissionError(
-                    "Internal service token rejected by agent gateway"
-                )
             if response.status_code >= 400:
-                err_body = response.text
-                logger.error(f"Gateway error {response.status_code}: {err_body}")
+                err_code = ""
+                try:
+                    err_data = response.json() or {}
+                    err_code = err_data.get("error", "")
+                except Exception:  # noqa: BLE001
+                    pass
+
+                logger.error(
+                    "Gateway error %s (error_code=%s)",
+                    response.status_code,
+                    err_code,
+                )
+
+                if response.status_code == 403:
+                    raise PermissionError(
+                        "Internal service token rejected by agent gateway"
+                    )
+                if response.status_code == 404 or err_code in (
+                    "model_not_allowed",
+                    "model_not_found",
+                    "provider_not_supported",
+                ):
+                    raise ModelNotAllowedError(
+                        f"Gateway rejected model '{model_id}' ({err_code or response.status_code})"
+                    )
+                if response.status_code == 413:
+                    raise PayloadTooLargeError(
+                        "Generation payload exceeded the gateway body limit"
+                    )
+                if response.status_code == 400 and err_code == "missing_api_key":
+                    raise GatewayConfigError(
+                        "Cloud provider API key is not configured on the server"
+                    )
+
                 raise RuntimeError(
-                    f"Agent gateway returned status {response.status_code}: {err_body}"
+                    f"Agent gateway returned status {response.status_code}"
                 )
 
             data = response.json()
@@ -150,6 +197,7 @@ class AgentGatewayClient:
                 raw_response=data.get("raw_response", ""),
                 latency_ms=float(data.get("latency_ms", 0.0)),
                 usage=data.get("usage"),
+                stop_reason=data.get("stop_reason"),
             )
 
         except httpx.TimeoutException as exc:

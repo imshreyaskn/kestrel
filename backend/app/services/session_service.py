@@ -109,8 +109,9 @@ class SessionService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """
-        Fetch chronological (paginated) messages for session with resolved
-        evidence citations. Excerpts are resolved directly from stored
+        Fetch chronological messages for session (newest-page semantics per Finding G7:
+        offset skips N newest messages, returned array is ordered chronologically
+        for UI display). Excerpts are resolved directly from stored
         transcript_chunks.content.
         """
         # 1. Enforce session ownership
@@ -118,11 +119,11 @@ class SessionService:
         if not session:
             return []
 
-        # 2. Load messages with joined sources
+        # 2. Load messages with joined sources (newest-first query, reversed for chronological display)
         stmt = (
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.created_at.asc(), Message.id.asc())
+            .order_by(Message.created_at.desc(), Message.id.desc())
             .offset(offset)
             .limit(limit)
             .options(
@@ -132,7 +133,7 @@ class SessionService:
             )
         )
         result = await db.execute(stmt)
-        messages = result.scalars().all()
+        messages = list(reversed(result.scalars().all()))
 
         message_list: list[dict[str, Any]] = []
         for msg in messages:

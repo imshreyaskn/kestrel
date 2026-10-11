@@ -3,8 +3,11 @@ Application Settings & Configuration
 Loaded from environment variables with fallback to local development defaults.
 """
 
+from __future__ import annotations
+
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,8 +62,28 @@ class Settings(BaseSettings):
     # Retrieval & Guardrails
     RETRIEVAL_TOP_K: int = 8
     RETRIEVAL_MIN_SCORE: float = 0.25
+    RETRIEVAL_WEAK_DENSE: float = 0.32
     MAX_CONTEXT_MESSAGES: int = 12
+    HISTORY_TOKEN_BUDGET_LOCAL: int = 4000
+    HISTORY_TOKEN_BUDGET_CLOUD: int = 20000
     GENERATION_TIMEOUT_SECONDS: int = 120
+
+    @model_validator(mode="after")
+    def _validate_config(self) -> Settings:
+        # If env vars pass empty strings, fallback to default canonical model IDs
+        self.GEMINI_MODEL = self.GEMINI_MODEL or "gemini-3.5-flash-lite"
+        self.ANTHROPIC_MODEL = self.ANTHROPIC_MODEL or "claude-sonnet-5"
+        self.OPENAI_MODEL = self.OPENAI_MODEL or "gpt-4o"
+
+        # Reject default placeholder token in non-development environments
+        if (
+            self.APP_ENV != "development"
+            and self.INTERNAL_SERVICE_TOKEN == "replace-with-a-long-random-local-token"
+        ):
+            raise ValueError(
+                "INTERNAL_SERVICE_TOKEN must be changed from the default placeholder in production/staging."
+            )
+        return self
 
 
 settings = Settings()

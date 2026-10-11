@@ -28,7 +28,11 @@ def create_candidate(
     title: str = "Test Episode",
     system: str = "dense",
     score: float = 0.8,
+    char_start: int | None = None,
+    char_end: int | None = None,
 ) -> RetrievedCandidate:
+    start = char_start if char_start is not None else chunk_index * 100
+    end = char_end if char_end is not None else (chunk_index + 1) * 100
     return RetrievedCandidate(
         chunk_id=chunk_id,
         source_id=source_id,
@@ -36,8 +40,8 @@ def create_candidate(
         chunk_index=chunk_index,
         content=f"Content for chunk {chunk_id}",
         token_count=100,
-        char_start=0,
-        char_end=100,
+        char_start=start,
+        char_end=end,
         episode_title=title,
         guest="Test Guest",
         episode_url="https://youtube.com/watch?v=123",
@@ -259,3 +263,60 @@ async def test_hybrid_retrieval_service_sparse_error_degradation() -> None:
     assert not result.insufficient_evidence
     assert len(result) == 1
     assert result[0].guest == "Adam Fishman"
+
+
+def test_rrf_fusion_dedupes_overlapping_chunks() -> None:
+    src_id = uuid.uuid4()
+    # Chunk 1: chars 0..200 (score 0.9)
+    # Chunk 2: chars 80..280 (60% overlap with Chunk 1) (score 0.8)
+    # Chunk 3: chars 500..700 (disjoint from Chunk 1 and 2) (score 0.7)
+    chunk_1 = create_candidate(uuid.uuid4(), src_id, chunk_index=0, score=0.9, char_start=0, char_end=200)
+    chunk_2 = create_candidate(uuid.uuid4(), src_id, chunk_index=1, score=0.8, char_start=80, char_end=280)
+    chunk_3 = create_candidate(uuid.uuid4(), src_id, chunk_index=4, score=0.7, char_start=500, char_end=700)
+
+    dense = [chunk_1, chunk_2, chunk_3]
+    fused = compute_rrf_fusion(dense, [], top_k=5, max_per_source=3)
+
+    # Chunk 2 should be suppressed due to >50% overlap with higher-ranked Chunk 1;
+    # Chunk 3 should survive because it is disjoint.
+    assert len(fused) == 2
+    fused_chunk_ids = {item.chunk_id for item in fused}
+    assert chunk_1.chunk_id in fused_chunk_ids
+    assert chunk_2.chunk_id not in fused_chunk_ids
+    assert chunk_3.chunk_id in fused_chunk_ids
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retrieval_service_weak_evidence_flag() -> None:
+    embedder = DeterministicFakeEmbeddingProvider()
+    service = HybridRetrievalService(embedder=embedder, min_dense_score=0.20)
+
+    # One candidate with dense score 0.28 (below default RETRIEVAL_WEAK_DENSE 0.32)
+    mock_row = {
+        "chunk_id": uuid.uuid4(),
+        "source_id": uuid.uuid4(),
+        "source_key": "episodes/weak/transcript.md",
+        "chunk_index": 0,
+        "content": "A tenuous passing mention of product growth.",
+        "token_count": 50,
+        "char_start": 0,
+        "char_end": 50,
+        "episode_title": "Weak Episode",
+        "guest": "Guest",
+        "episode_url": "https://youtube.com/watch?v=weak",
+        "publish_date": "2024-01-01",
+        "score": 0.28,
+    }
+
+    mock_session = AsyncMock()
+    dense_res = MagicMock()
+    dense_res.mappings.return_value.all.return_value = [mock_row]
+    sparse_res = MagicMock()
+    sparse_res.mappings.return_value.all.return_value = []
+    mock_session.execute.side_effect = [dense_res, sparse_res]
+
+    result = await service.search(mock_session, "some tenuous query", top_k=3)
+    assert not result.insufficient_evidence
+    assert len(result) == 1
+    assert result.weak_evidence is True
+

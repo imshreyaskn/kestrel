@@ -23,7 +23,16 @@ ESSAY_MIN_WORDS = 1150
 ESSAY_MAX_WORDS = 1350
 
 
-class EssayLengthError(StructuredExtractionError):
+class AgentOutputError(StructuredExtractionError):
+    """Validation failure with a machine-readable reason for targeted repair."""
+
+    def __init__(self, reason_code: str, detail: str = "") -> None:
+        self.reason_code = reason_code
+        self.detail = detail
+        super().__init__(f"{reason_code}: {detail}" if detail else reason_code)
+
+
+class EssayLengthError(AgentOutputError):
     """Raised when a generated essay falls outside the accepted word range."""
 
     def __init__(
@@ -36,8 +45,8 @@ class EssayLengthError(StructuredExtractionError):
         self.min_words = min_words
         self.max_words = max_words
         super().__init__(
-            f"Essay length {actual_words} words is outside the accepted "
-            f"range of {min_words}-{max_words} words."
+            "ESSAY_LENGTH",
+            f"essay was {actual_words} words; contract requires {min_words}-{max_words}",
         )
 
 
@@ -145,25 +154,65 @@ def filter_valid_citations(
     return valid_citations
 
 
+_INLINE_LABEL_RE = re.compile(r"\[(E\d+(?:\s*,\s*E\d+)*)\]")
+
+
+def enforce_inline_labels(
+    text: str,
+    valid_ids: set[str],
+    strict: bool,
+) -> tuple[str, list[str]]:
+    """Check inline [E#] citation labels against valid retrieved evidence IDs.
+
+    In strict mode, collects invalid labels and leaves text untouched for repair.
+    In non-strict mode, strips invalid labels to avoid broken UI affordances.
+    """
+    invalid: list[str] = []
+
+    def repl(m: re.Match) -> str:
+        parts = [p.strip() for p in m.group(1).split(",")]
+        kept: list[str] = []
+        for p in parts:
+            if p in valid_ids:
+                kept.append(p)
+            else:
+                invalid.append(p)
+        if strict:
+            return m.group(0)
+        if not kept:
+            return ""
+        return f"[{', '.join(kept)}]"
+
+    cleaned = _INLINE_LABEL_RE.sub(repl, text)
+    return cleaned, invalid
+
+
 def validate_agent_response(
     raw_response_text: str,
     mode: str,
     valid_evidence_ids: set[str],
     essay_word_target: int | None = None,
+    stop_reason: str | None = None,
+    strict_labels: bool = True,
 ) -> ValidatedResponse:
     """
     Parse, sanitize, validate, and ground LLM response text into a typed response model.
     Enforces that citation IDs must strictly belong to valid_evidence_ids.
     """
-    raw_json = extract_json_payload(raw_response_text)
+    if stop_reason in ("length", "max_tokens"):
+        raise AgentOutputError("TRUNCATED", "provider stopped at the output token ceiling")
+
+    try:
+        raw_json = extract_json_payload(raw_response_text)
+    except StructuredExtractionError as exc:
+        raise AgentOutputError("JSON_PARSE", str(exc)) from exc
+
     try:
         payload = json.loads(raw_json, strict=False)
         if not isinstance(payload, dict):
-            raise StructuredExtractionError("Extracted JSON root must be an object")
+            raise AgentOutputError("JSON_PARSE", "Extracted JSON root must be an object")
     except json.JSONDecodeError as exc:
-        raise StructuredExtractionError(
-            f"Failed to parse extracted JSON: {exc}"
-        ) from exc
+        raise AgentOutputError("JSON_PARSE", f"Failed to parse extracted JSON: {exc}") from exc
 
     if mode == "growth_brief":
         raw_citations = payload.get("citations", [])
@@ -184,12 +233,25 @@ def validate_agent_response(
         recommendation = str(payload.get("recommendation", "")).strip()
         insufficient = bool(payload.get("insufficient_evidence", False))
         if not recommendation and not insufficient:
-            raise StructuredExtractionError("Growth brief recommendation must not be empty")
+            raise AgentOutputError("EMPTY_ANSWER", "Growth brief recommendation must not be empty")
+
+        summary = str(payload.get("research_summary", "")).strip()
+        rec_clean, inv_rec = enforce_inline_labels(
+            recommendation, valid_evidence_ids, strict=strict_labels
+        )
+        sum_clean, inv_sum = enforce_inline_labels(
+            summary, valid_evidence_ids, strict=strict_labels
+        )
+        all_inv = inv_rec + inv_sum
+        if strict_labels and all_inv:
+            raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(all_inv))))
+        recommendation = rec_clean
+        summary = sum_clean
 
         return ValidatedGrowthBriefResponse(
             title=str(payload.get("title", "Growth Brief")).strip(),
             problem=str(payload.get("problem", "")).strip(),
-            research_summary=str(payload.get("research_summary", "")).strip(),
+            research_summary=summary,
             recommendation=recommendation,
             assumptions=[str(a) for a in assumptions],
             experiment=ExperimentPlan(
@@ -211,7 +273,14 @@ def validate_agent_response(
         cleaned_citations = filter_valid_citations(raw_citations, valid_evidence_ids)
         essay_text = str(payload.get("essay_markdown", "")).strip()
         if not essay_text:
-            raise StructuredExtractionError("essay_markdown must not be empty")
+            raise AgentOutputError("EMPTY_ANSWER", "essay_markdown must not be empty")
+
+        essay_text, invalid = enforce_inline_labels(
+            essay_text, valid_evidence_ids, strict=strict_labels
+        )
+        if strict_labels and invalid:
+            raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(invalid))))
+
         insufficient = bool(payload.get("insufficient_evidence", False))
 
         # Inline markers [E#] or multi-markers like [E1, E2] are citations, not prose words
@@ -257,7 +326,13 @@ def validate_agent_response(
         ]
         content = str(payload.get("content", "")).strip()
         if not content:
-            raise StructuredExtractionError("Artifact content must not be empty")
+            raise AgentOutputError("EMPTY_ANSWER", "Artifact content must not be empty")
+
+        content, invalid = enforce_inline_labels(
+            content, valid_evidence_ids, strict=strict_labels
+        )
+        if strict_labels and invalid:
+            raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(invalid))))
 
         return ValidatedArtifactResponse(
             mode="artifact_html" if kind == "html" else "artifact_markdown",
@@ -272,7 +347,13 @@ def validate_agent_response(
         cleaned_citations = filter_valid_citations(raw_citations, valid_evidence_ids)
         answer = str(payload.get("answer_markdown", "")).strip()
         if not answer:
-            raise StructuredExtractionError("answer_markdown must not be empty")
+            raise AgentOutputError("EMPTY_ANSWER", "answer_markdown must not be empty")
+
+        answer, invalid = enforce_inline_labels(
+            answer, valid_evidence_ids, strict=strict_labels
+        )
+        if strict_labels and invalid:
+            raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(invalid))))
 
         follow_up = payload.get("follow_up_question")
         follow_up_str = str(follow_up).strip() if follow_up else None

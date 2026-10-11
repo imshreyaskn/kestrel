@@ -80,6 +80,17 @@ class EvidenceItem:
         }
 
 
+def _overlaps(a: RetrievedCandidate, b: RetrievedCandidate, thresh: float = 0.5) -> bool:
+    """Check if two candidates from the same episode overlap significantly by char range."""
+    if a.source_id != b.source_id:
+        return False
+    if None in (a.char_start, a.char_end, b.char_start, b.char_end):
+        return a.content == b.content
+    inter = max(0, min(a.char_end, b.char_end) - max(a.char_start, b.char_start))
+    shorter = min(a.char_end - a.char_start, b.char_end - b.char_start)
+    return shorter > 0 and (inter / shorter) > thresh
+
+
 def compute_rrf_fusion(
     dense_candidates: Sequence[RetrievedCandidate],
     sparse_candidates: Sequence[RetrievedCandidate],
@@ -123,6 +134,7 @@ def compute_rrf_fusion(
     # 4. Apply diversity constraint and filter
     selected_items: list[EvidenceItem] = []
     source_counts: dict[uuid.UUID, int] = {}
+    selected_candidates: list[RetrievedCandidate] = []
 
     for cid in sorted_chunk_ids:
         score = scores[cid]
@@ -134,7 +146,11 @@ def compute_rrf_fusion(
         if count >= max_per_source:
             continue
 
+        if any(_overlaps(cand, sel_cand) for sel_cand in selected_candidates):
+            continue
+
         source_counts[cand.source_id] = count + 1
+        selected_candidates.append(cand)
         evidence_label = f"E{len(selected_items) + 1}"
 
         item = EvidenceItem(
@@ -174,6 +190,7 @@ class RetrievalResult(Sequence[EvidenceItem]):
     query: str
     top_score: float = 0.0
     top_dense_score: float = 0.0
+    weak_evidence: bool = False
 
     def __iter__(self):
         return iter(self.items)
@@ -275,6 +292,7 @@ class HybridRetrievalService:
 
         # Insufficient evidence if no candidates qualified
         insufficient = len(items) == 0
+        weak = bool(items) and (top_dense < settings.RETRIEVAL_WEAK_DENSE)
 
         return RetrievalResult(
             items=items,
@@ -282,6 +300,7 @@ class HybridRetrievalService:
             query=clean_query,
             top_score=top_score,
             top_dense_score=top_dense,
+            weak_evidence=weak,
         )
 
     async def _retrieve_dense(

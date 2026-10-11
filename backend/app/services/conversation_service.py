@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.agent_client.gateway_client import (
     AgentGatewayClient,
+    GatewayConfigError,
+    PayloadTooLargeError,
     default_gateway_client,
 )
 from backend.app.agent_client.prompts import (
@@ -29,6 +31,7 @@ from backend.app.agent_client.prompts import (
     format_evidence_block,
 )
 from backend.app.agent_client.validator import (
+    AgentOutputError,
     EssayLengthError,
     ValidatedArtifactResponse,
     ValidatedEssayResponse,
@@ -66,6 +69,35 @@ ABSTENTION_FOLLOW_UP = (
 )
 
 _CITATION_MARKER_RE = re.compile(r"\[E\d+(?:\s*,\s*E\d+)*\]")
+_FOLLOWUP_RE = re.compile(
+    r"\b(it|that|this|these|those|they|he|she|him|her|them|same|more|again)\b",
+    re.I,
+)
+CHARS_PER_TOKEN = 4
+
+
+def build_retrieval_query(current: str, prior_user: str | None) -> str:
+    """Expand short or anaphoric follow-up queries using the prior user turn (Finding B3)."""
+    q = current.strip()
+    words = q.split()
+    if prior_user and (len(words) < 6 or _FOLLOWUP_RE.search(q)):
+        return f"{prior_user.strip()}\n{q}"
+    return q
+
+
+def _trim_history_to_budget(
+    messages: list[Message], budget_tokens: int
+) -> list[Message]:
+    """Prune oldest whole messages if history token estimate exceeds budget (Finding B1 & G4)."""
+    kept: list[Message] = []
+    used = 0
+    for m in reversed(messages):
+        cost = len(m.content or "") // CHARS_PER_TOKEN + 4
+        if used + cost > budget_tokens:
+            break
+        kept.append(m)
+        used += cost
+    return list(reversed(kept))
 
 
 class ModelNotAllowedError(ValueError):
@@ -89,6 +121,16 @@ def classify_generation_error(exc: BaseException) -> tuple[str, str, bool]:
     """
     if isinstance(exc, ModelNotAllowedError):
         return ("MODEL_NOT_ALLOWED", str(exc), False)
+    if isinstance(exc, GatewayConfigError):
+        return ("PROVIDER_MISCONFIGURED", str(exc), False)
+    if isinstance(exc, PayloadTooLargeError):
+        return ("PAYLOAD_TOO_LARGE", str(exc), False)
+    if isinstance(exc, PermissionError):
+        return (
+            "AUTHENTICATION_FAILED",
+            "Internal service authentication failed.",
+            False,
+        )
     if isinstance(exc, ConnectionError):
         return (
             "AGENT_UNAVAILABLE",
@@ -102,6 +144,12 @@ def classify_generation_error(exc: BaseException) -> tuple[str, str, bool]:
             "The model took too long to respond. Retry, or switch to a "
             "faster provider.",
             True,
+        )
+    if isinstance(exc, AgentOutputError) and exc.reason_code == "TRUNCATED":
+        return (
+            "GENERATION_TRUNCATED",
+            "The response exceeded the model's output limit. Try a narrower ask or a larger provider.",
+            False,
         )
     if isinstance(exc, EssayLengthError):
         return (
@@ -372,6 +420,15 @@ class ConversationService:
         )
         history_result = await db.execute(stmt)
         prior_messages = list(reversed(history_result.scalars().all()))
+
+        # Budget history to avoid silent context truncation (Finding B1 & G4)
+        history_budget = (
+            settings.HISTORY_TOKEN_BUDGET_LOCAL
+            if provider == "local"
+            else settings.HISTORY_TOKEN_BUDGET_CLOUD
+        )
+        prior_messages = _trim_history_to_budget(prior_messages, history_budget)
+
         conversation_context = [
             {
                 "role": m.role,
@@ -396,9 +453,22 @@ class ConversationService:
                 },
             }
 
+            # Follow-up query expansion for anaphoric / pronoun queries (Finding B3)
+            prior_user = next(
+                (m.content for m in reversed(prior_messages) if m.role == "user"),
+                None,
+            )
+            retrieval_query = build_retrieval_query(content, prior_user)
+            logger.debug(
+                "Run %s: retrieval query: %r (original: %r)",
+                run_id,
+                retrieval_query,
+                content,
+            )
+
             retrieval_res = await self.retrieval_service.search(
                 session=db,
-                query=content,
+                query=retrieval_query,
                 top_k=settings.RETRIEVAL_TOP_K,
             )
 
@@ -458,6 +528,8 @@ class ConversationService:
                     mode=mode,
                     valid_evidence_ids=valid_evidence_ids,
                     essay_word_target=target_word_count,
+                    stop_reason=gw_result.stop_reason,
+                    strict_labels=True,
                 )
             except StructuredExtractionError as first_error:
                 if not evidence_items:
@@ -495,6 +567,8 @@ class ConversationService:
                         product_context=product_context,
                         validation_error=str(first_error),
                         essay_word_target=target_word_count,
+                        reason_code=getattr(first_error, "reason_code", "JSON_PARSE"),
+                        detail=getattr(first_error, "detail", str(first_error)),
                     )
                     gw_result = await self._run_cancellable(
                         self.gateway_client.generate(
@@ -518,6 +592,8 @@ class ConversationService:
                             mode=mode,
                             valid_evidence_ids=valid_evidence_ids,
                             essay_word_target=target_word_count,
+                            stop_reason=gw_result.stop_reason,
+                            strict_labels=False,
                         )
                     except StructuredExtractionError as repair_error:
                         logger.error(
@@ -580,8 +656,10 @@ class ConversationService:
                 assistant_message.content = validated.essay_markdown
 
             elif isinstance(validated, ValidatedArtifactResponse):
+                digest = validated.content[:600].replace("\n", " ")
                 assistant_message.content = (
-                    f"Created {validated.kind.upper()} artifact: **{validated.title}**"
+                    f"Created {validated.kind.upper()} artifact: **{validated.title}**\n"
+                    f"[content digest] {digest}…"
                 )
                 artifact = await ArtifactService.create_artifact(
                     db=db,
@@ -683,6 +761,7 @@ class ConversationService:
                     if growth_brief_id
                     else None,
                     "artifact_id": str(artifact_id) if artifact_id else None,
+                    "weak_evidence": getattr(retrieval_res, "weak_evidence", False),
                 },
             }
 

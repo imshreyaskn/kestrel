@@ -617,3 +617,72 @@ async def test_resolve_model_id_allowlist():
     )
     with pytest.raises(ModelNotAllowedError):
         ConversationService.resolve_model_id("cloud", "anthropic", "gpt-4o")
+
+
+def test_build_retrieval_query_followup_expansion():
+    from backend.app.services.conversation_service import build_retrieval_query
+
+    # 1. Standalone substantive query is unchanged
+    q1 = "What is Elena Verna's framework for B2B PLG activation?"
+    assert build_retrieval_query(q1, "Earlier message") == q1
+
+    # 2. Pronoun query is joined with prior user turn
+    q2 = "Why does she recommend that?"
+    expanded = build_retrieval_query(q2, "Elena Verna talks about freemium")
+    assert expanded == "Elena Verna talks about freemium\nWhy does she recommend that?"
+
+    # 3. Short query (<6 words) is joined
+    q3 = "tell me more"
+    assert build_retrieval_query(q3, "Retention loops") == "Retention loops\ntell me more"
+
+    # 4. If no prior user turn, returned as-is
+    assert build_retrieval_query("why that?", None) == "why that?"
+
+
+def test_trim_history_to_budget():
+    import uuid
+
+    from backend.app.models.entities import Message
+    from backend.app.services.conversation_service import _trim_history_to_budget
+
+    # Each message: 400 chars -> 100 tokens + 4 = 104 tokens
+    m1 = Message(id=uuid.uuid4(), role="user", content="A" * 400)
+    m2 = Message(id=uuid.uuid4(), role="assistant", content="B" * 400)
+    m3 = Message(id=uuid.uuid4(), role="user", content="C" * 400)
+
+    # Budget of 250 tokens fits m2 and m3 (208 tokens), drops oldest m1
+    trimmed = _trim_history_to_budget([m1, m2, m3], budget_tokens=250)
+    assert len(trimmed) == 2
+    assert trimmed[0] == m2
+    assert trimmed[1] == m3
+
+
+def test_classify_generation_error_typed_gateway_and_truncation():
+    from backend.app.agent_client.gateway_client import (
+        GatewayConfigError,
+        PayloadTooLargeError,
+    )
+    from backend.app.agent_client.validator import AgentOutputError
+    from backend.app.services.conversation_service import classify_generation_error
+
+    # GatewayConfigError (400 missing key) -> PROVIDER_MISCONFIGURED (non-retryable)
+    code, msg, retry = classify_generation_error(GatewayConfigError("Missing key"))
+    assert code == "PROVIDER_MISCONFIGURED"
+    assert retry is False
+
+    # PayloadTooLargeError (413) -> PAYLOAD_TOO_LARGE (non-retryable)
+    code, msg, retry = classify_generation_error(PayloadTooLargeError("Too large"))
+    assert code == "PAYLOAD_TOO_LARGE"
+    assert retry is False
+
+    # PermissionError (403) -> AUTHENTICATION_FAILED (non-retryable)
+    code, msg, retry = classify_generation_error(PermissionError("Bad token"))
+    assert code == "AUTHENTICATION_FAILED"
+    assert retry is False
+
+    # Truncated output -> GENERATION_TRUNCATED (non-retryable)
+    code, msg, retry = classify_generation_error(AgentOutputError("TRUNCATED", "Hit max tokens"))
+    assert code == "GENERATION_TRUNCATED"
+    assert "exceeded the model's output limit" in msg
+    assert retry is False
+

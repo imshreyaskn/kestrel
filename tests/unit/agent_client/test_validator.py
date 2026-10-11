@@ -322,3 +322,74 @@ def test_validate_artifact_rejects_empty_content():
     with pytest.raises(StructuredExtractionError) as exc_info:
         validate_agent_response(raw_llm, mode="artifact_markdown", valid_evidence_ids=set())
     assert "Artifact content must not be empty" in str(exc_info.value)
+
+
+def test_validate_detects_stop_reason_truncation():
+    from backend.app.agent_client.validator import AgentOutputError
+
+    raw_llm = '{"answer_markdown": "Incomplete text'
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            raw_llm,
+            mode="research",
+            valid_evidence_ids=set(),
+            stop_reason="length",
+        )
+    assert exc_info.value.reason_code == "TRUNCATED"
+    assert "output token ceiling" in exc_info.value.detail
+
+
+def test_enforce_inline_labels_strict_and_lenient():
+    from backend.app.agent_client.validator import (
+        AgentOutputError,
+        enforce_inline_labels,
+    )
+
+    valid_ids = {"E1", "E2"}
+
+    # Direct function test: strict
+    cleaned_strict, invalid_strict = enforce_inline_labels(
+        "Grounded claim [E1] and hallucinated claim [E99] and multi [E2, E88]",
+        valid_ids=valid_ids,
+        strict=True,
+    )
+    assert set(invalid_strict) == {"E99", "E88"}
+    assert "[E99]" in cleaned_strict
+
+    # Direct function test: non-strict
+    cleaned_lenient, invalid_lenient = enforce_inline_labels(
+        "Grounded claim [E1] and hallucinated claim [E99] and multi [E2, E88]",
+        valid_ids=valid_ids,
+        strict=False,
+    )
+    assert set(invalid_lenient) == {"E99", "E88"}
+    assert "[E99]" not in cleaned_lenient
+    assert "[E88]" not in cleaned_lenient
+    assert "[E1]" in cleaned_lenient
+    assert "[E2]" in cleaned_lenient
+
+    # validate_agent_response strict mode raises INVALID_LABELS
+    raw_llm = json.dumps({
+        "answer_markdown": "Lenny said [E99] is great.",
+        "citations": [],
+        "insufficient_evidence": False,
+    })
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            raw_llm,
+            mode="research",
+            valid_evidence_ids={"E1"},
+            strict_labels=True,
+        )
+    assert exc_info.value.reason_code == "INVALID_LABELS"
+    assert "E99" in exc_info.value.detail
+
+    # validate_agent_response lenient mode strips [E99]
+    res = validate_agent_response(
+        raw_llm,
+        mode="research",
+        valid_evidence_ids={"E1"},
+        strict_labels=False,
+    )
+    assert "[E99]" not in res.answer_markdown
+

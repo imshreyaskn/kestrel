@@ -5,6 +5,7 @@ Implements IMPLEMENTATION_SPEC.md §8 (Agent Workflows & Output Contracts).
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Sequence
 from typing import Any
 
@@ -49,17 +50,28 @@ def format_evidence_block(evidence_items: Sequence[Any]) -> str:
     return "\n\n".join(lines)
 
 
+REPAIR_GUIDANCE: dict[str, str] = {
+    "JSON_PARSE": "Return ONLY one corrected JSON object matching the OUTPUT SCHEMA above. Start with { and end with }. No commentary, no markdown fences. Escape quotes inside string values.",
+    "ESSAY_LENGTH": "Your essay was the wrong length ({detail}). Rewrite to land inside the required range by adding or cutting real content — never pad with repetition or recap.",
+    "EMPTY_ANSWER": "The answer field was empty. Provide the actual answer, grounded in the evidence, with citations where claims are archive facts.",
+    "INVALID_LABELS": "These inline labels do not exist in this run's evidence: {detail}. Cite only from the provided evidence, or remove the marker and label the claim as your own analysis.",
+    "TRUNCATED": "Your previous response was cut off mid-output. Produce a complete but more concise JSON object that fits the output limit.",
+}
+
+
 def build_repair_system_prompt(
     mode: str,
     evidence_block: str,
     product_context: str | None = None,
     validation_error: str = "",
     essay_word_target: int | None = None,
+    reason_code: str = "JSON_PARSE",
+    detail: str = "",
 ) -> str:
-    """System prompt for the single constrained repair attempt (spec §7.6).
+    """System prompt for the single constrained repair attempt (spec §7.6, Finding D2).
 
-    Reuses the base prompt for the mode and adds a strict correction
-    instruction containing the validation failure reason.
+    Reuses the base prompt for the mode and adds a targeted correction
+    instruction keyed on the machine-readable reason code.
     """
     base_prompt = build_system_prompt(
         mode=mode,
@@ -67,19 +79,19 @@ def build_repair_system_prompt(
         product_context=product_context,
         essay_word_target=essay_word_target,
     )
-    bounded_error = validation_error[:300]
+    effective_detail = (detail or validation_error)[:300]
+    guidance_template = REPAIR_GUIDANCE.get(reason_code, REPAIR_GUIDANCE["JSON_PARSE"])
+    try:
+        guidance = guidance_template.format(detail=effective_detail)
+    except Exception:  # noqa: BLE001
+        guidance = guidance_template
+
     return f"""{base_prompt}
 
-REPAIR INSTRUCTION (retry after invalid output):
-Your previous response was rejected because it was not a single valid JSON
-object. Reported problem: {bounded_error}
-
-Return ONLY one corrected JSON object matching the OUTPUT SCHEMA above.
-- Start the response with {{ and end it with }}.
-- Do not add commentary, apologies, or markdown fences.
-- Escape all quotation marks inside string values.
-- Keep every field from the schema, with citation evidence IDs drawn only
-  from the provided evidence.
+REPAIR INSTRUCTION (your previous response was rejected).
+Reason: {reason_code}. {effective_detail}
+{guidance}
+Keep every field from the schema; citation IDs only from the provided evidence.
 """
 
 
@@ -187,7 +199,10 @@ def build_system_prompt(
 Synthesize an authoritative, nuanced answer grounded in podcast expert transcripts, or provide warm editorial guidance for conversational turns.
 When insufficient_evidence is true: (1) name specifically what the archive lacks for this question, (2) offer the closest angle the provided evidence DOES support (cite it), and (3) put one concrete reframed question in follow_up_question. Never fill the gap with invented archive facts; labeled general reasoning is allowed and welcome."""
 
-    return f"""{BASE_SYSTEM_INSTRUCTIONS}
+    date_line = f"Today's date is {datetime.date.today().isoformat()} (server timezone UTC)."
+    return f"""{date_line}
+
+{BASE_SYSTEM_INSTRUCTIONS}
 
 {mode_instructions}
 

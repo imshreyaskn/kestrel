@@ -1,10 +1,9 @@
 """
-Configuration and Provider Introspection Endpoints (IMPLEMENTATION_SPEC.md §6.2)
-GET /api/v1/config    - UI-safe public configuration (no secrets)
-GET /api/v1/providers - Live availability of local & cloud providers
+Configuration Introspection Endpoint (IMPLEMENTATION_SPEC.md §6.2)
+GET /api/v1/config - UI-safe public configuration (no secrets)
+(Provider status is served canonically by backend/app/api/v1/providers.py)
 """
 
-import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -47,48 +46,3 @@ async def get_ui_config() -> UIConfigResponse:
             "openai": bool(settings.OPENAI_API_KEY),
         },
     )
-
-
-@router.get("/providers", summary="Provider Live Status")
-async def get_providers_status() -> dict:
-    """Check live status of providers with short timeouts without blocking the UI."""
-    status_map: dict[str, dict] = {}
-
-    # 1. Local Ollama Check
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            res = await client.get(f"{settings.OLLAMA_BASE_URL}/api/version")
-            status_map["local"] = {
-                "provider": "ollama",
-                "available": res.status_code == 200,
-                "version": res.json().get("version")
-                if res.status_code == 200
-                else None,
-                "model": settings.OLLAMA_CHAT_MODEL,
-            }
-    except Exception as e:  # noqa: BLE001
-        status_map["local"] = {
-            "provider": "ollama",
-            "available": False,
-            "error": str(e),
-            "model": settings.OLLAMA_CHAT_MODEL,
-        }
-
-    # 2. Cloud Providers Check
-    status_map["cloud"] = {
-        "configured_provider": settings.DEFAULT_CLOUD_PROVIDER,
-        "gemini": {
-            "configured": bool(settings.GEMINI_API_KEY),
-            "model": settings.GEMINI_MODEL,
-        },
-        "anthropic": {
-            "configured": bool(settings.ANTHROPIC_API_KEY),
-            "model": settings.ANTHROPIC_MODEL,
-        },
-        "openai": {
-            "configured": bool(settings.OPENAI_API_KEY),
-            "model": settings.OPENAI_MODEL,
-        },
-    }
-
-    return status_map

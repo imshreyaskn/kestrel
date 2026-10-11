@@ -27,13 +27,10 @@ services:
       NODE_ENV: development
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:1.5b}
-      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-replace-with-a-long-random-local-token}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-latest}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # Spec §13.1: the gateway is an internal service with no host-published
@@ -56,15 +53,15 @@ services:
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:1.5b}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
-      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-replace-with-a-long-random-local-token}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set}
       DEFAULT_PROVIDER: ${DEFAULT_PROVIDER:-local}
       DEFAULT_CLOUD_PROVIDER: ${DEFAULT_CLOUD_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-latest}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
       RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-8}
       RETRIEVAL_MIN_SCORE: ${RETRIEVAL_MIN_SCORE:-0.25}
       MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-12}

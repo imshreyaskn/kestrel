@@ -76,3 +76,15 @@ def test_standardized_error_envelope_on_404():
     assert "request_id" in err
     assert "message" in err
     assert response.headers.get("x-request-id") == err["request_id"]
+
+
+def test_no_duplicate_routes():
+    """Ensure no two route endpoints register the same HTTP method and path (Finding G3)."""
+    routes: list[str] = []
+    for r in app.routes:
+        if hasattr(r, "path") and hasattr(r, "methods"):
+            for method in r.methods:
+                routes.append(f"{method} {r.path}")
+    dupes = {r for r in routes if routes.count(r) > 1}
+    assert not dupes, f"Duplicate route registrations found: {dupes}"
+

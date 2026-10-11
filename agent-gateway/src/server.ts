@@ -275,7 +275,7 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
       if (!targetModel) {
         return res.status(404).json({
           error: "model_not_found",
-          message: `Model '${payload.model_id}' is not available in the ${cloudProviderName} catalog. Set ${cloudProviderName.toUpperCase()}_MODEL to a valid model ID.`,
+          message: `Model '${payload.model_id}' is not available in the ${cloudProviderName} catalog. The backend's ${cloudProviderName.toUpperCase()}_MODEL setting must match a catalog ID.`,
           latency_ms: Date.now() - startTime,
         });
       }
@@ -289,8 +289,37 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
       });
     }
 
-    // Execute completion via Pi AI SDK
-    const assistantResult = await models.complete(targetModel, piContext);
+    // Execute completion via Pi AI SDK with provider-aware context and output limits (Finding B1)
+    const OLLAMA_NUM_CTX = Number(process.env.OLLAMA_NUM_CTX || 16384);
+    const OUTPUT_TOKENS: Record<string, number> = {
+      local: Number(process.env.OLLAMA_MAX_OUTPUT || 3072),
+      gemini: 8192,
+      anthropic: 8192,
+      openai: 4096,
+    };
+
+    const cloudProviderName = payload.cloud_provider || "gemini";
+    const completeOptions: Record<string, unknown> = {
+      maxTokens:
+        payload.provider === "local"
+          ? OUTPUT_TOKENS.local
+          : (OUTPUT_TOKENS[cloudProviderName] ?? 4096),
+    };
+
+    if (payload.provider === "local") {
+      completeOptions.samplingParams = {
+        options: {
+          num_ctx: OLLAMA_NUM_CTX,
+          num_predict: OUTPUT_TOKENS.local,
+        },
+      };
+    }
+
+    const assistantResult = await models.complete(
+      targetModel,
+      piContext,
+      completeOptions as never
+    );
 
     // Extract text content from Pi Assistant message
     const rawContent = assistantResult.content
@@ -318,8 +347,24 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
 });
 
 if (process.env.NODE_ENV !== "test") {
+  // Startup catalog check (Finding G6)
+  for (const [providerName, meta] of Object.entries(CLOUD_PROVIDER_META)) {
+    try {
+      const catalog = models.getModels(meta.providerId);
+      console.log(
+        `[kestrel-agent-gateway] Provider '${providerName}' (${meta.providerId}) catalog initialized with ${catalog.length} models.`
+      );
+    } catch (err: any) {
+      console.warn(
+        `[kestrel-agent-gateway] Warning: could not initialize catalog for ${providerName}: ${err.message}`
+      );
+    }
+  }
+
   app.listen(PORT, () => {
-    console.log(`[kestrel-agent-gateway] Listening on port ${PORT} (Node ${process.version}, powered by @earendil-works/pi-ai)`);
+    console.log(
+      `[kestrel-agent-gateway] Listening on port ${PORT} (Node ${process.version}, powered by @earendil-works/pi-ai)`
+    );
   });
 }
 
