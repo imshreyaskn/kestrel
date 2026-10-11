@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # provider data; gemini-3.8-flash is the production workhorse default,
     # gemini-3.5-flash-lite the high-efficiency tier)
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     ANTHROPIC_API_KEY: str | None = None
     # Catalog-verified against the installed @earendil-works/pi-ai provider

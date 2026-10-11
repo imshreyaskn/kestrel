@@ -12,8 +12,6 @@ Tests:
 
 import json
 import urllib.request
-import pytest
-
 
 BASE_URL = "http://localhost:5173"
 

@@ -50,7 +50,8 @@ export const IndexRail: React.FC<IndexRailProps> = ({
           {openNow.length > 0 && (
             <>
               <p className="rl-group">Open now</p>
-              {openNow.map((s) => {
+              {openNow.map((s, idx) => {
+                const displayNum = String(idx + 1).padStart(2, '0');
                 const isActive = s.id === activeSessionId;
                 return (
                   <div className={`rl-item-wrap ${isActive ? 'active' : ''}`} key={s.id}>
@@ -61,9 +62,8 @@ export const IndexRail: React.FC<IndexRailProps> = ({
                         onCloseMobile();
                       }}
                     >
-                      <span className="rl-num">{s.num}</span>
+                      <span className="rl-num">{displayNum}</span>
                       <span className="rl-t">{s.title}</span>
-                      <span className="rl-m">{s.meta}</span>
                     </button>
                     <button
                       className="rl-del"
@@ -85,7 +85,8 @@ export const IndexRail: React.FC<IndexRailProps> = ({
           {earlier.length > 0 && (
             <>
               <p className="rl-group">Design tour — not persisted</p>
-              {earlier.map((s) => {
+              {earlier.map((s, idx) => {
+                const displayNum = s.num || `T${idx + 1}`;
                 const isActive = s.id === activeSessionId;
                 return (
                   <div className={`rl-item-wrap ${isActive ? 'active' : ''}`} key={s.id}>
@@ -96,9 +97,8 @@ export const IndexRail: React.FC<IndexRailProps> = ({
                         onCloseMobile();
                       }}
                     >
-                      <span className="rl-num">{s.num}</span>
+                      <span className="rl-num">{displayNum}</span>
                       <span className="rl-t">{s.title}</span>
-                      <span className="rl-m">{s.meta}</span>
                     </button>
                   </div>
                 );

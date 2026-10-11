@@ -21,25 +21,29 @@ Kestrel rejects the generic "grey chat bubble" paradigm common to standard LLM w
 
 ## 2. Design Tokens & Visual Hierarchy
 
-### Color Palette
+### Color Palette (The Bone & Aubergine System)
 | Token | Value | Semantic Purpose |
 | :--- | :--- | :--- |
-| `--canvas` | `#F7F4ED` | Warm, non-glare paper background reminiscent of fine editorial stock. |
-| `--surface` | `#FFFEFB` | Elevated card and container background. |
-| `--ink` | `#242A2E` | Deep charcoal primary text color; softer than pure `#000000` to prevent eye strain. |
-| `--muted-ink` | `#686D6B` | Secondary editorial prose, metadata, and body copy. |
-| `--accent` | `#B65E45` | Subdued terra cotta / vermilion accent for interactive highlights and citations. |
-| `--accent-ink` | `#9A4B35` | High-contrast accent for interactive text and links. |
-| `--accent-soft` | `#F2E2DA` | Soft tint for text selection and active badge pills. |
-| `--border` | `#E4DED4` | Hairline border tone for structural division without visual noise. |
-| `--danger` | `#A43F35` | Insufficient evidence and error warning indicators. |
-| `--success` | `#466A58` | Verified evidence indicators and successful state badges. |
+| `--canvas` | `#F2F0E9` | Primary bone paper sheet canvas (light paper baseline). |
+| `--surface` | `#FAF8F2` | Elevated parchment cards, modals, and rail background. |
+| `--surface-raised` | `#FFFFFF` | High-emphasis reading sheet surface. |
+| `--ink` | `#161614` | Carbon black editorial ink for body copy and headlines. |
+| `--muted-ink` | `#4A4844` | Mid-tone graphite ink for marginalia, timestamps, and metadata. |
+| `--faint` | `#7D7971` | Faint folios, roman numerals, and placeholder text. |
+| `--accent` | `#4A1F3D` | Royal aubergine primary accent for interactive states and underlines. |
+| `--accent-ink` | `#33142A` | Deep aubergine ink for high-contrast active links and titles. |
+| `--accent-line` | `#C8A8BE` | Soft plum hairline rule for hover states. |
+| `--accent-soft` | `rgba(74, 31, 61, 0.08)` | Translucent aubergine tint for text selections and active states. |
+| `--gold` | `#8C6A2D` | Antique brass / gold for spine folios and registration blooms. |
+| `--border` | `#DDD8CD` | Refined paper hairline boundary tone. |
+| `--danger` | `#8C2828` | Deep crimson for warnings and character-limit ceiling. |
+| `--success` | `#2D5A3D` | Forest green for verified evidence and successful status badges. |
 
 ### Typography Stack
-* **Display (`--f-disp`):** `Fraunces`, Georgia, serif — Optical sizes 9–144, high character warmth for headlines and section headers.
+* **Display (`--f-disp`):** `Fraunces`, Georgia, serif — Optical sizes 9–144, variable softness (SOFT) and wonkiness (WONK) for headlines and editorial titles.
 * **Reading Body (`--f-text`):** `Newsreader`, Georgia, serif — Optimized for long-form reading comfort, generous line height (1.62).
-* **Interface UI (`--f-ui`):** `Space Grotesk`, system-ui, sans-serif — Clean, modern geometric sans for buttons, labels, and toggles.
-* **Monospace (`--f-mono`):** `Spline Sans Mono`, ui-monospace, monospace — Provenance stamps, citation numbers, and code blocks.
+* **Interface UI (`--f-ui`):** `Space Grotesk`, system-ui, sans-serif — Clean geometric sans for buttons, labels, and toggles.
+* **Monospace (`--f-mono`):** `Spline Sans Mono`, ui-monospace, monospace — Provenance stamps, citation numbers, and character counter badges.
 
 ---
 
@@ -91,6 +95,12 @@ Kestrel rejects the generic "grey chat bubble" paradigm common to standard LLM w
    - Dual-mode inspector: Sandboxed Preview vs. Raw Source Code.
    - Isolated `<iframe sandbox="">` with strict CSP (`default-src 'none'`).
    - Copy to Clipboard and Download with proper MIME types.
+7. **Running Head & Dossier Lifecycle (`RunningHead.tsx`):**
+   - Fixed header bar anchored with brand metadata on the left and provider colophon button on the right.
+   - Mathematically centered title at 50% viewport width (`position: absolute; left: 50%; transform: translate(-50%, -50%)`), dynamically expanding with title length.
+   - Seamless double-click inline retitling via `contentEditable` with Aubergine underline, without input box popup or layout displacement.
+   - Enforced 60-character ceiling with non-displacing absolute counter badge (`{charCount} / 60`).
+   - Deferred PostgreSQL persistence: new dossiers and renamed drafts exist purely in local UI state until the user sends their first query.
 
 ---
 

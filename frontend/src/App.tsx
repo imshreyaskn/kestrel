@@ -60,6 +60,7 @@ export const App: React.FC = () => {
   const [view, setView] = useState<AppView>('frontmatter');
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState<string | null>(null);
   const [activeProvider, setActiveProvider] = useState<ProviderId>('local');
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
 
@@ -205,6 +206,7 @@ export const App: React.FC = () => {
       }
       const target = sessions.find((s) => s.id === sessionId);
       if (!target) return;
+      setDraftTitle(null);
       setActiveSessionId(sessionId);
       setView('manuscript');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -234,6 +236,7 @@ export const App: React.FC = () => {
       return;
     }
     setActiveSessionId(null);
+    setDraftTitle(null);
     setView('frontmatter');
     const ta = document.querySelector<HTMLTextAreaElement>('#fmTa');
     if (ta) ta.focus();
@@ -271,15 +274,35 @@ export const App: React.FC = () => {
     [isComposing, sessions, activeSessionId, handleNewDossier, showToast]
   );
 
-  // Optimistic rename with honest revert on failure.
+  // Renaming: persisted sessions update PostgreSQL; draft/new dossiers only record in local state
+  // until the user actually sends their first query (no empty ghost sessions in DB).
   const handleTitleChange = useCallback(
     (newTitle: string) => {
-      if (!activeSessionId) return;
-      const previous = sessions.find((s) => s.id === activeSessionId)?.title;
+      const trimmed = newTitle.slice(0, 60).trim();
+      if (!trimmed) return;
+
+      if (!activeSessionId) {
+        setDraftTitle(trimmed);
+        showToast('Dossier titled');
+        return;
+      }
+
+      const target = sessions.find((s) => s.id === activeSessionId);
+      if (!target) return;
+
+      if (target.isDemo) {
+        setSessions((prev) =>
+          prev.map((s) => (s.id === activeSessionId ? { ...s, title: trimmed } : s))
+        );
+        showToast('Dossier retitled');
+        return;
+      }
+
+      const previous = target.title;
       setSessions((prev) =>
-        prev.map((s) => (s.id === activeSessionId ? { ...s, title: newTitle } : s))
+        prev.map((s) => (s.id === activeSessionId ? { ...s, title: trimmed } : s))
       );
-      api.updateSessionTitle(activeSessionId, newTitle).then(
+      api.updateSessionTitle(activeSessionId, trimmed).then(
         () => showToast('Dossier retitled'),
         () => {
           setSessions((prev) =>
@@ -457,9 +480,12 @@ export const App: React.FC = () => {
               }
 
               // Research / brief / essay answer entry.
-              const stamp = `Set in ${stampModel} · ${stampProvider} — ${citations.length} citation${
-                citations.length === 1 ? '' : 's'
-              } verified`;
+              const stamp =
+                citations.length > 0
+                  ? `Set in ${stampModel} · ${stampProvider} — ${citations.length} citation${
+                      citations.length === 1 ? '' : 's'
+                    } verified`
+                  : `Set in ${stampModel} · ${stampProvider}`;
               appendEntry(session.id, {
                 id: data.message.id || 'ans-' + Date.now(),
                 kind: 'answer',
@@ -469,7 +495,9 @@ export const App: React.FC = () => {
               });
 
               announce(
-                `Entry bound — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified in the margin.`
+                citations.length > 0
+                  ? `Entry bound — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified in the margin.`
+                  : `Entry bound — set in ${stampModel}.`
               );
               showToast(`Entry bound — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified`);
               setTimeout(() => {
@@ -522,16 +550,20 @@ export const App: React.FC = () => {
 
       try {
         if (!currentSession) {
-          const newSess = await api.createSession(text.slice(0, 60), activeProvider);
+          const initialTitle = draftTitle || text.slice(0, 60);
+          const newSess = await api.createSession(initialTitle, activeProvider);
           setSessions((prev) => [newSess, ...prev]);
           setActiveSessionId(newSess.id);
+          setDraftTitle(null);
           setView('manuscript');
           currentSession = newSess;
         } else if (currentSession.isDemo) {
           showToast('Design tour dossier — binding to a fresh archive dossier');
-          const newSess = await api.createSession(text.slice(0, 60), activeProvider);
+          const initialTitle = draftTitle || text.slice(0, 60);
+          const newSess = await api.createSession(initialTitle, activeProvider);
           setSessions((prev) => [newSess, ...prev]);
           setActiveSessionId(newSess.id);
+          setDraftTitle(null);
           currentSession = newSess;
         }
       } catch (err) {
@@ -559,7 +591,7 @@ export const App: React.FC = () => {
 
       runComposingPipeline(currentSession!, text, mode, format, productContext);
     },
-    [activeProvider, activeSession, announce, appendEntry, runComposingPipeline, showToast]
+    [activeProvider, activeSession, draftTitle, announce, appendEntry, runComposingPipeline, showToast]
   );
 
   // Retry the most recent real run, if there was one.
@@ -740,13 +772,14 @@ export const App: React.FC = () => {
 
       {/* Masthead */}
       <RunningHead
-        title={activeSession?.title || ''}
-        isUntitled={!activeSession}
+        title={activeSession ? activeSession.title : (draftTitle || '')}
+        isUntitled={!activeSession && !draftTitle}
         onTitleChange={handleTitleChange}
         activeProvider={activeProvider}
         onProviderChange={handleProviderChange}
         providers={providers}
         onOpenMobileMenu={() => setIsMobileRailOpen(true)}
+        isComposing={isComposing}
       />
 
       {/* Book-spine Session Index Rail */}

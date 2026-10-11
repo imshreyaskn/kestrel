@@ -544,4 +544,476 @@ And in JS, the `play()` helper short-circuits to instant-set when `matchMedia('(
 
 ---
 
-*(Sections 6–15 continue in this file: icon system, per-component reskin specs, micro-interaction inventory, signature moments, anti-slop doctrine, implementation roadmap.)*
+## 6. Iconography — the "Apparatus" family
+
+### 6.1 Why bespoke
+
+Lucide/Feather icons at 1.5px stroke next to Fraunces feel *bolted on* — their terminals are cut differently from Fraunces's. Awwwards-tier work designs its icon family *against its typeface*. Apparatus is a 24-grid monoline family whose design rules come directly from Fraunces:
+
+- **24px grid, 1.5px stroke**, round caps — but terminals on bracket/open shapes get a 0.5px flare (Fraunces has flared terminals).
+- **Optical, not mathematical:** x-height glyphs (strike, plus) drawn at 20px visual size within the 24 box; round glyphs (dots, plate) overshoot 0.5px.
+- **Three weights of the same stroke language:** UI icons 1.5px; ornamental marks (endmark, registration crosses) 1.25px at 14px scale; spine glyphs 1.75px (dark background needs weight).
+- **Ink logic:** icons are aubergine *strokes* on bone (like pen ruling), bone strokes on aubergine surfaces (spine). Never filled solids except the citation bead, which is literally a bead of ink.
+
+### 6.2 The glyphs (draw to this spec)
+
+| Name | Concept | Notes |
+|---|---|---|
+| `folio` | A folded page, 2 strokes | Rail "new dossier" |
+| `knot` | Two strokes crossing like a stitch | "Bind" — submit semantics |
+| `strike` | Single horizontal rule w/ serif tick ends | Strike the run / error states |
+| `quill` | Diagonal nib, 3 strokes | Essay mode |
+| `plate` | Bracket pair `[ ]` with baseline rule | Plate/artifact mode |
+| `corner` | Folded-corner triangle | Fold modal, close affordance |
+| `seed` | 6-point asterisk ✳ | Frontmatter star note (exists) |
+| `arrow-out` | NE arrow with tail serif | `↗` episode links |
+| `x` | Two 45° strokes, 3px inset | Close |
+| `plus` | Plus, intersection rounded 1px | Rail new, context add |
+| `chev` | 60° chevron, 2px gap | Menus, tray |
+| `tick` | Polyline check | Verified steps |
+| `dot-ring` | 4px dot + 12px ring | Provider status |
+
+### 6.3 Icon *transition* system (the Apple move)
+
+Icons don't swap — they **morph**. Two principles:
+
+1. **Rotation over cross-fade** for symmetric glyphs (plus→x costs 90°; menu→close costs 90° + 45° twist). Rotation reads as one physical object; cross-fade reads as two.
+2. **Path interpolation** for asymmetric morphs (plus→arrow-out on the "Open a new dossier" rail button hover). Use CSS `d:` interpolation with graceful degradation:
+
+```css
+/* plus → arrow morph on the rail 'new dossier' hover */
+.rl-new .glyph path {
+  /* "plus" drawn so its right arm is a separate path that lengthens+rotates */
+  transition: d 0.32s var(--ease-out-expo), rotate 0.32s var(--ease-out-expo);
+  d: path("M6 12 L18 12 M12 6 L12 18");          /* plus */
+}
+.rl-new:hover .glyph path {
+  d: path("M6 12 L16 12 M12 6 L12 18 M13 13 L18 18"); /* plus grows an arrowhead */
+}
+@supports not (d: path("M0 0")) {
+  .rl-new .glyph path { transition: none; }      /* static fallback: still legible */
+}
+```
+
+For non-Chromium, the universal fallback is the **two-path stack**: both paths absolutely stacked, opacity cross-fade 120ms + 90° rotate of a shared container — still one "object," still cheap:
+
+```css
+.icon-morph { position: relative; }
+.icon-morph path.b { position: absolute; inset: 0; opacity: 0; }
+.icon-morph.morphed path.a { opacity: 0; }
+.icon-morph.morphed path.b { opacity: 1; }
+.icon-morph { transition: rotate 0.24s var(--ease-spring); }
+.icon-morph.morphed { rotate: 90deg; }
+```
+
+3. **State echoes:** the `knot` (bind) icon ties itself on press — two strokes rotate 8° inward (80ms, `--dur-instant`), implying stitching. The `strike` icon *draws* its rule left→right (scaleX, 240ms) when a run is struck. Icons that narrate their own action are the difference between "icon set" and "icon design."
+
+### 6.4 Icon usage laws
+
+- Icon sizes: 14 (ornament), 16 (inline), 20 (buttons), 24 (modal headers). Never scaled arbitrarily.
+- Every icon-only control ships an `aria-label`; icon + text pairs hide the icon from AT (`aria-hidden`).
+- Icons in prose are `vertical-align: -0.15em` (optical baseline, not mathematical).
+- No icon appears in more than one semantic role (the `dot-ring` is *only* provider status).
+
+---
+
+## 7. Per-component reskin & interaction specs
+
+Grounding: every component below exists today; specs name the exact classes so an implementer can work file-by-file with zero guessing. Colors/tokens refer to §2.2.
+
+### 7.1 `RunningHead` (masthead)
+
+- Bar stays on bone canvas, gains a **1px bottom hairline** (`--bone-3`) that renders as a *printed rule*: 100% width, 1px, with a 2px aubergine tick at the active measure column's left edge (the "column start" mark from print proofs).
+- Title is Fraunces italic, `--aub-800`; on rename, the input's focus ring is `--aub-500` and the change **stamps**: on blur-save, the new title does a 320ms settle (`--spring-snappy` scale 0.98→1 with 0.3deg rotate) — a fresh label being pressed onto a folder.
+- Provider chip (`colobtn`): bone-0 surface, `--bone-3` border, mono label `Set in {model} · {provider}` in `--muted-ink`; the status **dot-ring** idles at `--aub-700` and gains a 2.4s breathing pulse (opacity 0.55→1, sine) **only while a run is composing** (activity, not decoration).
+- Colophon popover: bone-0, `--shadow-raised`, corner radius 10 (modal tier); provider rows use FLIP'd **dot travel** (§8.4) on switch.
+
+### 7.2 `IndexRail` (the spine)
+
+- Surface: solid `--aub-950` (§4.3) — the book spine. Spine ridge highlight via `::before`.
+- `rl-num` folio numerals: gold `--gold` at 10px mono, oldstyle — the foil-stamped numbers on a binding.
+- Active item: bone-2 text + **gold ribbon tab** (`::before`, §4.3) that **slides** between items via FLIP (§8.1) — the strongest "physical object" cue in the nav.
+- Hover: item text lightens bone-2→bone-1 (160ms) and the item's left rule (2px, `--aub-700`) fades in — never a full background fill on dark (fills read as "web app," rules read as "index tabs").
+- Delete affordance (`rl-del`): 18px target, `--aub-400` `×`, opacity 0→1 on item hover/focus-within (160ms); on click, the session card **tips out of the binder**: rotateX 10deg + translateY(-6px) + fade, 320ms, then list closes the gap with a 240ms layout transition (see §8.5).
+
+### 7.3 `Frontmatter` (landing)
+
+- Masthead: registration crosses flanking (§4.2). Hero uses the type rules in §3.1.
+- The `seed` (✳) star-note button is ornament-legal: gold stroke, `--aub-700` on hover; its leader line is the only leader on the page — a lone umbilical that sets the visual grammar before any content exists.
+- "Try" chips: mono, bone-0 surface, `--bone-3` border; hover lifts 2px (`--spring-snappy`) and the opening/closing typographic quotes tighten 0.02em (the type details are the interaction).
+- Mode radios (AS: Query/Brief/Essay/Plate): selected pill is aubergine-700 fill with bone text (flip, not tint); the **selector slides** — one shared pill element FLIPs between labels (§8.2) instead of each label changing background. Selected Plate reveals the Markdown/HTML sub-selector with a 240ms width+opacity reveal.
+- Submit ("Bind to archive ↵"): the **ink-stamp press** (§8.3) — this is the interaction users touch most; it must feel like the whole product.
+
+### 7.4 `Manuscript` (entries, sidenotes, leader lines)
+
+- Query card: the query is set in Fraunces italic `--t-h3` with a **3px aubergine rule** on the left that draws in on arrival (scaleY 0→1, 240ms, origin top). Meta stamp in mono `--muted-ink`.
+- Answer entries: drop cap on lead (§3.3.2), section heads with SOFT settle (§5.6), roman numerals gold **only** in the left margin position (`.rn`), citations per §8.6.
+- Sidenote cards (`.snote`): bone-0, top rule 2px `--bone-4`; speaker in mono small-caps aubergine-700; quote in Newsreader italic with hanging quotes; stamp line in `--faint`. Hover state (tied to ref-hover too): translateY(-2px) + `--shadow-raised` cross-fade + top rule recolors to `--aub-700` (the note "wakes").
+- Flash (citation jump): the **attention curve** (§8.7) — a 3-step pulse ending in the lifted state.
+- Endmark: gold diamond, blooms once per completed entry (§9.4).
+
+### 7.5 `ComposerBar`
+
+- The whole bar is a bone-0 **sheet** with `--shadow-page`; on focus into the textarea it *lifts* to `--shadow-raised` (240ms) and the `¶` glyph turns aubergine-700 — the pen touching paper.
+- Submit uses ink-stamp press (§8.3); while composing, the submit becomes the **strike** control (label swap with 90° knot→strike icon morph, §6.3) — the same button that starts the work can end it, and its icon says so.
+- Context drawer (product context): max-height reveal with opacity, 240ms `--ease-out-expo`; never height-animate the whole bar (layout law §5.2 — the drawer is its own element so the sheet doesn't reflow-jump).
+
+### 7.6 `GrowthBriefModal` ("The Fold")
+
+The signature surface — see the full mechanics in §9.2 (the folio fold). Skin: bone-0 paper, `--shadow-modal`, folio-corner glyph (gold) top-right, section numerals gold, badges per §2.5 (User context = aubergine-wash pill; Transcript evidence = verdigris-tick pill; Assistant synthesis = bone-4-border pill). `EdBlock` focus: 1px aubergine-500 rule appears *inside* the block's left edge (drawing left→right, 240ms) — editing feels like ruling a line in the margin. "Bind impression" = ink-stamp press + success tick stamps into the impression chip.
+
+### 7.7 `PlateViewerModal`
+
+- Opens **from the margin plate** (FLIP origin, §8.8) — the plate "leaves the margin and takes the stage."
+- Header: bone-0, file name in mono, impression chip in `--gold-soft`/`--gold` (ornament-use #2).
+- Preview/Source radio: shared sliding pill (same FLIP language as Frontmatter modes).
+- The iframe keeps `sandbox=""` + CSP exactly as implemented (security is a design feature — say so in the UI: the "sandboxed" stamp stays, in verdigris).
+- Source view: bone-2 recessed well, mono 13px, top "code rule" 1px `--bone-4`.
+
+### 7.8 `Toasts` (printed slips)
+
+- Bone-0 slip, 2px left rule aubergine-700 (danger slips get oxblood rule + `strike` glyph), Fraunces italic message, mono stamp time.
+- Enter/exit per §8.9; stack max 3; older slips rise 4px as new ones land (the FLIP of the stack).
+
+### 7.9 `StatesTray`
+
+- Stays! It is demo tooling, but give it print credibility: collapsed state is a small **colophon slip** (mono "design tour" + seed glyph, gold). The menu is a bone-0 index card with the disclaimer line from the current implementation kept verbatim (honesty is brand).
+
+---
+
+## 8. Micro-interaction inventory (the complete spec)
+
+Format: **trigger → behavior → timing/easing → code**. Each is small; the sum is the "feel."
+
+### 8.1 Rail ribbon tab slides (FLIP)
+
+Active dossier changes → capture old tab rect, move `::before` via a real (non-pseudo) element, FLIP 400ms `--ease-out-expo`. Reduced-motion: tab teleports.
+
+```ts
+const tab = railList.querySelector<HTMLElement>('.rl-tab');
+const next = e.currentTarget as HTMLElement;
+const first = tab.getBoundingClientRect();
+next.prepend(tab);                          // move to new active item
+flip(tab, first, { duration: 400, easing: 'cubic-bezier(0.16,1,0.3,1)' });
+```
+
+### 8.2 Sliding mode selector (shared pill)
+
+One absolutely-positioned pill behind the radio labels; label change → FLIP pill to the checked label's rect, 240ms `--spring-snappy`. Never animate `left`.
+
+### 8.3 Ink-stamp press (every primary button)
+
+```css
+.tbtn.solid { transition: transform var(--dur-instant) var(--ease-out-expo); }
+.tbtn.solid:active { transform: scale(0.97) rotate(-0.3deg); }
+.tbtn.solid.is-stamped {   /* moment of success — add class, remove after 600ms */
+  animation: stamp 0.6s var(--spring-snappy);
+}
+@keyframes stamp {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(0.965) rotate(-0.5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+```
+
+Companion: a 1-frame "ink ring" — a pseudo-element border aubergine-700 scaling 1→1.35 with opacity 0.5→0, 320ms, on successful binds only.
+
+### 8.4 Provider dot travels (colophon)
+
+Switch provider → the status dot FLIPs from old row to new row, 400ms; landing overshoot 12% (`--spring-snappy`). Physical slide-rule energy.
+
+### 8.5 Session delete — "tipping out of the binder"
+
+```ts
+play(item, 'delete', [
+  { transform: 'rotateX(0deg) translateY(0)', opacity: 1 },
+  { transform: 'rotateX(10deg) translateY(-6px)', opacity: 0, offset: 0.6 },
+  { transform: 'rotateX(10deg) translateY(-14px)', opacity: 0 },
+], { duration: 320, easing: 'cubic-bezier(0.65, 0.05, 0.36, 1)' });
+// then remove from state; list gap closes via .rl-item-wrap { transition: transform 240ms } FLIP of remaining items
+```
+
+Parent needs `perspective: 600px` on `.rail-list` for the rotateX to read as 3D tipping.
+
+### 8.6 Citation bead + leader line + sidenote (the core grammar)
+
+The three connected elements act as **one object with three anchors**:
+
+```css
+/* 1. The bead (in-text ref) */
+.sn-ref {
+  width: 1.1em; height: 1.1em; line-height: 1.1em;
+  border-radius: 50%;
+  font: 600 0.62em var(--f-mono);
+  color: var(--bone-1);
+  background: var(--aub-700);
+  transition: transform var(--dur-fast) var(--spring-snappy),
+              background var(--dur-fast) var(--ease-out-expo);
+}
+.sn-ref:hover, .sn-ref.hot { transform: scale(1.3); background: var(--aub-600); }
+
+/* 2. The leader (SVG path + terminal dot) */
+g.lead path {
+  stroke: var(--accent-line);
+  stroke-width: 1.1;
+  fill: none;
+  transition: stroke var(--dur-fast) linear;
+}
+g.lead.hot path { stroke: var(--aub-700); }
+g.lead circle { fill: var(--aub-700); }
+
+/* 3. The note */
+.snote {
+  transition: transform var(--dur-normal) var(--spring-gentle),
+              border-color var(--dur-fast) linear;
+}
+.snote.hot, .snote.flash {
+  transform: translateY(-2px);
+}
+```
+
+Ink-draw on first appearance of an entry's leaders (and only first): `stroke-dasharray = len; stroke-dashoffset len→0`, 640ms, `--ease-out-expo`, staggered 60ms per line, capped at 4 lines. Reduced-motion: lines render complete.
+
+### 8.7 Sidenote flash (jump-to-evidence)
+
+```css
+@keyframes snote-flash {
+  0%   { transform: translateY(-2px) scale(1);    box-shadow: var(--shadow-raised); }
+  40%  { transform: translateY(-3px) scale(1.025); box-shadow: var(--shadow-modal); }
+  100% { transform: translateY(-2px) scale(1);    box-shadow: var(--shadow-raised); }
+}
+.snote.flash { animation: snote-flash 0.72s var(--ease-attention) both; }
+```
+
+The 1.025 overshoot *is* the attention curve — a card being tapped by a finger, not a blink.
+
+### 8.8 Plate viewer origin (FLIP from the margin)
+
+```ts
+const plateRect = plateAsideEl.getBoundingClientRect();   // First
+setIsPlateOpen(true);                                     // render modal
+requestAnimationFrame(() => {
+  const frame = modalEl.querySelector('.pv-body');
+  const stage = modalEl.getBoundingClientRect();          // Last
+  const dx = plateRect.left - stage.left, dy = plateRect.top - stage.top;
+  const s = Math.max(0.08, plateRect.width / stage.width);
+  frame.animate([
+    { transform: `translate(${dx}px, ${dy}px) scale(${s})`, opacity: 0.4,
+      transformOrigin: 'top left', borderRadius: '6px' },
+    { transform: 'translate(0,0) scale(1)', opacity: 1, borderRadius: '0' },
+  ], { duration: 480, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+});
+```
+
+### 8.9 Toast slips
+
+```css
+.toast {
+  transform: translateY(14px) rotate(-0.5deg);
+  opacity: 0;
+  animation: slip-in 0.44s var(--spring-gentle) forwards;
+}
+@keyframes slip-in {
+  to { transform: translateY(0) rotate(-0.35deg); opacity: 1; }
+}
+/* exit: play() reverses 'slip-in' → the slip settles back down and fades */
+```
+
+The permanent −0.35deg tilt is deliberate: each slip sits slightly crooked, like a paper note — the imperfection cue (§15).
+
+### 8.10 Version-conflict shake (409)
+
+The impression chip shakes ±3px, 320ms, `ease-in-out-soft`, three oscillations then settles; simultaneously the toast (§8.9) carries the conflict copy. The shake is the *only* negative-emotion animation in the product and it must stay exclusive to errors.
+
+```css
+@keyframes chip-conflict {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(3px); } 40% { transform: translateX(-3px); }
+  60% { transform: translateX(2px); } 80% { transform: translateX(-1px); }
+}
+.imp-chip.conflict { animation: chip-conflict 0.32s var(--ease-in-out-soft); }
+```
+
+### 8.11 Escape-key affordance while composing
+
+When a run is in flight, the strike control shows a mono `esc` keycap that fades in after 3s of composing (users forget Esc exists): 8px bone-2 keycap, `--bone-4` border, appears with 160ms rise. Dismisses when the run completes.
+
+### 8.12 Focus ring draw
+
+```css
+:focus-visible {
+  outline: 2px solid var(--aub-500);
+  outline-offset: 3px;
+  border-radius: 3px;
+  transition: outline-offset var(--dur-instant) var(--ease-out-expo),
+              outline-color var(--dur-instant) linear;
+}
+:focus-visible:active { outline-offset: 2px; }   /* ring grips the element on press */
+```
+
+---
+
+## 9. Signature moments (the five a juror remembers)
+
+Budget: **at most one cinematic per user action**, 480–720ms, all reversible. These are the moments that convert "very good" into "Site of the Day."
+
+### 9.1 "The Bind" — the query leaves the composer and becomes a card
+
+On submit, the typed text visually travels from the textarea into the manuscript column as the new query card (View Transitions API, shared element):
+
+```ts
+// In the submit handler, before appending the entry:
+const ta = document.querySelector('#ckTa');
+if (document.startViewTransition && ta?.value) {
+  document.startViewTransition(() => appendQueryEntry(text));
+}
+```
+
+```css
+::view-transition-old(query-ghost) { animation: none; }
+::view-transition-new(query-ghost) {
+  animation: bind-rise 0.56s var(--ease-out-expo);
+}
+@keyframes bind-rise {
+  from { transform: translateY(46px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+```
+
+Fallback (no VTA): the entry-arrive stagger (§5.4). The physical story — your words left the pen and settled onto the page — is the product's whole metaphor in one gesture.
+
+### 9.2 "The Fold" — the growth brief opens as a folio
+
+The modal's entrance is a page folding open from the top and settling flat. Perspective lives on the **scrim** (not the card); the card starts at `rotateX(12deg) translateY(-24px)` with `--shadow-page` and lands at `rotateX(0)` with `--shadow-modal` — **shadow and shape settle together**, which is what makes paper believable:
+
+```css
+.fold-scrim { background: rgba(27, 18, 32, 0.32); perspective: 1400px; }
+.fold.open .fold-doc {
+  transform-origin: 50% 0;
+  animation: fold-open 0.64s var(--spring-heavy) both;
+}
+@keyframes fold-open {
+  from { transform: rotateX(12deg) translateY(-24px) scale(0.985); opacity: 0; }
+  to   { transform: rotateX(0deg)  translateY(0)    scale(1);     opacity: 1; }
+}
+```
+
+Close: `play()` reversal (§5.7) — interruptible, same curve. Section numerals and badges stagger in (40ms, capped, §5.4) during the fold's final 40%, so content feels printed on the page as it lands.
+
+### 9.3 "The Strike" — striking a run is a physical cancellation
+
+When the user strikes the run: an aubergine-700 rule **draws left→right through the composing card's title** (scaleX, origin left, 400ms, `--ease-out-expo`), the card desaturates (`filter: grayscale(0.7)`, 320ms), tips back (rotateX −6deg) and collapses; then the "Run struck — nothing was persisted" slip arrives (§8.9). Total: 720ms of theater that *explains the consequence* — cancellation as communication:
+
+```css
+.composing::before {          /* the strike rule */
+  content: "";
+  position: absolute;
+  left: 12px; right: 12px; top: 34px; height: 2px;
+  background: var(--aub-700);
+  transform: scaleX(0); transform-origin: left;
+}
+.composing.is-struck::before {
+  transform: scaleX(1);
+  transition: transform 0.4s var(--ease-out-expo);
+}
+.composing.is-struck { filter: grayscale(0.7); transition: filter 0.32s linear; }
+.composing.is-collapsing { animation: card-collapse 0.32s var(--ease-in-out-soft) forwards; }
+@keyframes card-collapse { to { transform: rotateX(-6deg) scaleY(0.6); opacity: 0; } }
+```
+
+### 9.4 "The Bloom" — the endmark
+
+When an entry completes, the gold endmark diamond blooms once — scale 0.6→1.25→1 (640ms, `--spring-snappy`) with a 4-point gold registration sparkle (two hairlines crossing, scale 0.8→1.1, opacity 0→0.6→0). It is the period at the end of the product's sentence. Completed answers only — never decorative idling.
+
+### 9.5 "The Spine" — first-load overture
+
+On first load of the frontmatter: the rail spine slides in from the left (transform only, 400ms) → hero words rise per-word with 40ms stagger → the lone seed leader draws (§8.6). One choreographed 800ms overture, then the page goes completely still. **Motion budget: stillness is the default state; the resting page runs 0 animations.**
+
+---
+
+## 10. Scroll, layout & performance discipline
+
+### 10.1 Restraint rails
+
+- Long manuscripts: `content-visibility: auto` + `contain-intrinsic-size: 0 640px` per `.entry` — render cost stays flat at 100 entries.
+- Leader redraws: keep the MutationObserver approach but rAF-throttle with a dirty-set (only re-measure entries whose `data-rev` changed). Scroll triggers **no** leader math; measurement happens at draw time only.
+- `will-change` discipline: applied just-in-time by `play()`/`flip()` and removed on finish. CSS never ships static `will-change`.
+- Shadow cross-fade law: hovers never transition `box-shadow` itself (paint); stack a pseudo-element and transition its `opacity`:
+
+```css
+.snote::after {          /* shadow layer */
+  content: ""; position: absolute; inset: 0;
+  box-shadow: var(--shadow-raised);
+  opacity: 0; transition: opacity var(--dur-fast) linear;
+  z-index: -1; pointer-events: none;
+}
+.snote:hover::after, .snote.hot::after { opacity: 1; }
+```
+
+### 10.2 The page-turn view transition (frontmatter ↔ manuscript)
+
+With VTA: old view fades up 6px while the new view rises 14px, both 240ms — never a slide-deck wipe. The composer and rail don't participate in the transition, so they visually persist (continuity law §5.1.4).
+
+### 10.3 Responsive notes (must not regress)
+
+The current narrow-viewport behavior (leaders hidden < 1121px; sidenotes become inline footnotes) is *correct* for the metaphor — margin notes become footnotes on small pages. Keep the breakpoint; add: leader-draw animation disabled under it (nothing to draw), and the spine rail collapses to a 72px icon spine below 900px with labels on tap.
+
+---
+
+## 11. Copy & motion-of-language (the invisible system)
+
+- Toasts and stamps keep the letterpress voice ("Entry bound — 4 citations verified"). **Voice consistency is a design feature** — never "Saved successfully!"
+- Loading language is honest by design ("consulting the archive", "verifying citations") — copy and motion explain the same truth (backend stages map 1:1 to visible steps).
+- Motion nouns match motion verbs: *bind, strike, fold, file, examine.* If a control moves like a stamp, its copy says "Bind."
+
+## 12. Sound? No.
+
+Closing the door deliberately: haptics/audio on a research tool is scope creep and an a11y risk. Physicality is achieved optically. Decision recorded so future agents don't relitigate it.
+
+## 13. Accessibility — the design, not the checklist
+
+- Every state change announced via the existing live region; composing steps announce stage changes (already implemented — keep).
+- Color is never the only signal: verified = tick glyph + word; danger = strike glyph + copy; provider states = dot *and* label text (WCAG 1.4.1).
+- Focus rings: aubergine-500 with the draw interaction (§8.12) — verified ≥ 3:1 against both bone and aubergine-950 surfaces.
+- Hit targets: `.sn-ref` beads are 1.1em visually but get **24px effective targets** via `::after { inset: -6px; }` hit-slop.
+- The plate iframe keeps `sandbox=""` + restrictive CSP exactly as implemented — the security posture is *part of the aesthetic claim* ("examined, never trusted").
+- Reduced-motion: every spec above names its degradation; §5.9's global rule is the backstop.
+
+## 14. Phased implementation roadmap (zero-regression)
+
+Designed so the functional backend binding (already merged) never breaks. Each phase ships independently:
+
+1. **Phase 1 — Tokens only (½ day).** Swap §2.2 tokens into `:root` (the existing `--canvas/--ink/--accent` re-maps do ~70% of the reskin in two variable reassignments). Swap shadow tokens (§4.1). Run a contrast pass (axe/WAVE). Ship, look, tune bone warmth ±1% chroma under real lighting.
+2. **Phase 2 — Paper & spine (½ day).** Rail → `--aub-950` spine with ridge + gold numerals (§7.2, §4.3), page deckle edge (§4.2), registration marks, grain tune. Add the `.rl-tab` element (no FLIP yet).
+3. **Phase 3 — Motion primitives (1 day).** Add duration/curve/`linear()` tokens (generate real spring values once with §5.3's snippet), `play()`/`flip()` helpers, reduced-motion gate. Convert toasts, focus rings, hovers, beads, snote wake, composing steps (§5.5), stamp press (§8.3).
+4. **Phase 4 — Component theater (1 day).** The Fold (§9.2), The Strike (§9.3), plate FLIP (§8.8), rail ribbon slide + delete tip-out (§8.1/§8.5), mode-pill FLIP (§8.2), provider dot travel (§8.4), conflict shake (§8.10).
+5. **Phase 5 — Icons & type (1 day).** Draw the 13 Apparatus glyphs (§6.2), the two icon morphs (§6.3), Fraunces axis discipline + drop caps + tabular/oldstyle numerals (§3), font self-host + metric fallbacks.
+6. **Phase 6 — Signatures & polish (½ day).** The Bind (§9.1), The Bloom (§9.4), The Spine overture (§9.5), performance pass (§10), full reduced-motion audit, keyboard-only walkthrough.
+
+**Verification gates per phase:** `tsc` + `npm run build` + a manual pass through the StatesTray design tour (it exists precisely for this — tour fixtures double as the visual regression suite) + one real query per mode against the live backend.
+
+## 15. The anti-slop doctrine (read before every PR)
+
+Banned in Kestrel, with reasons:
+
+1. **No purple-blue gradients, no glassmorphism, no glow shadows.** Bone/aubergine duotone + paper shadows only.
+2. **No neutral gray ink.** All text is plum. This single rule is what keeps the reskin from regressing to template.
+3. **No centered-everything.** The manuscript is a *column* with a *margin* — asymmetry is the layout's opinion.
+4. **No radii over 12px, no mixed radii.** Scale: 0 (rules), 3 (beads, inputs), 9 (cards), 12 (modals). A radius is a print form, not decoration.
+5. **No emoji, ever** — including toasts. Glyphs come from Apparatus.
+6. **No motion on rest.** The resting page is still; motion is a response to a cause (§5.1 law 1). Autoplaying loops only for composing dots and the composing-only status pulse.
+7. **No animation of layout properties** (`width/height/top/left/font-size`), no `will-change` soup.
+8. **No fake data in the visual layer.** Demo content ships only through the marked tour fixtures — a design system that lies is slop at the content level.
+9. **Max 2 concurrent animated elements per interaction** (exception: the five sanctioned signature moments).
+10. **No default icon libraries bolted on.** Apparatus only; missing glyph → draw it to spec (§6.2).
+11. **Never animate WONK. Never animate font-size. Never stagger more than 4 words.**
+12. **Every new surface must answer "what is this made of?"** (paper? spine? slip?) *before* it gets color, shadow, or motion. Material first, style second.
+
+The one-sentence quality bar for every diff:
+
+> *"Does this feel like a well-made object doing exactly what your hand asked — or like a website performing?"*
+
+---
+
+*End of research. Implementation guidance lives in §14; per-component contracts in §7–8; all code snippets are illustrative and must be adapted to the real DOM (class names verified against `dossier.css` and `frontend/src/components/`).*
+

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Citation, ComposingStep, ManuscriptEntry } from '../types';
 import { segmentTextWithCitations } from '../lib/citeInline';
+import { bloomEndmark, settleEntry } from '../lib/motion';
 import { SideNote } from './SideNote';
 import { PlateAside } from './PlateAside';
 
@@ -80,9 +81,23 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
   onPrefillQuery,
   onRetryLast,
 }) => {
+  const prevEntryCount = useRef(entries.length);
+  const entriesRef = useRef<HTMLDivElement>(null);
+
+  // Bloom the endmark and settle entries when a new answer arrives.
+  useEffect(() => {
+    if (entries.length > prevEntryCount.current) {
+      bloomEndmark();
+      // Settle the last entry's type variation
+      const lastEl = entriesRef.current?.lastElementChild as HTMLElement | null;
+      if (lastEl) settleEntry(lastEl);
+    }
+    prevEntryCount.current = entries.length;
+  }, [entries.length]);
+
   return (
     <section className="manuscript" id="manuscript" aria-label="Dossier entries">
-      <div className="entries" id="entries">
+      <div className="entries" id="entries" ref={entriesRef}>
         {entries.map((entry) => {
           if (entry.kind === 'blank') {
             return (

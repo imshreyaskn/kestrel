@@ -216,10 +216,10 @@ export function extractSSEEvents(buffer: string): { events: SSEEvent[]; remainde
 // ---------------------------------------------------------------------------
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-function sessionRecordToData(s: SessionRecord, index: number): SessionData {
+function sessionRecordToData(s: SessionRecord, index = 0): SessionData {
   return {
     id: s.id,
-    num: pad2(index + 1),
+    num: pad2(Math.max(0, index) + 1),
     title: s.title,
     meta: `dossier · ${s.provider_preference}`,
     kind: 'live',
@@ -570,7 +570,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ title, provider_preference: provider }),
     });
-    return sessionRecordToData(s, -1);
+    return sessionRecordToData(s, 0);
   },
 
   /**

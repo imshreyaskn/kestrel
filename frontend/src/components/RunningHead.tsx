@@ -9,6 +9,7 @@ interface RunningHeadProps {
   onProviderChange: (providerId: ProviderId) => void;
   providers: ProviderConfig[];
   onOpenMobileMenu: () => void;
+  isComposing?: boolean;
 }
 
 export const RunningHead: React.FC<RunningHeadProps> = ({
@@ -19,21 +20,29 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
   onProviderChange,
   providers,
   onOpenMobileMenu,
+  isComposing = false,
 }) => {
+  const MAX_TITLE_LENGTH = 60;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editTitleValue, setEditTitleValue] = useState(title);
+  const [charCount, setCharCount] = useState(0);
   const [isColophonOpen, setIsColophonOpen] = useState(false);
   const colophonRef = useRef<HTMLDivElement>(null);
-  const titleInputRef = useRef<HTMLInputElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    setEditTitleValue(title);
-  }, [title]);
+    if (spanRef.current && !isEditingTitle) {
+      spanRef.current.textContent = isUntitled ? 'untitled dossier' : title;
+    }
+  }, [title, isUntitled, isEditingTitle]);
 
   useEffect(() => {
-    if (isEditingTitle && titleInputRef.current) {
-      titleInputRef.current.focus();
-      titleInputRef.current.select();
+    if (isEditingTitle && spanRef.current) {
+      spanRef.current.focus();
+      const range = document.createRange();
+      range.selectNodeContents(spanRef.current);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
     }
   }, [isEditingTitle]);
 
@@ -51,22 +60,84 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
     return () => document.removeEventListener('click', handleOutsideClick);
   }, [isColophonOpen]);
 
-  const handleTitleSubmit = () => {
-    setIsEditingTitle(false);
-    const trimmed = editTitleValue.trim();
-    if (trimmed && trimmed !== title) {
-      onTitleChange(trimmed);
+  const handleInput = () => {
+    if (!spanRef.current) return;
+    const raw = spanRef.current.textContent || '';
+    if (raw.length > MAX_TITLE_LENGTH) {
+      spanRef.current.textContent = raw.slice(0, MAX_TITLE_LENGTH);
+      const range = document.createRange();
+      range.selectNodeContents(spanRef.current);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      setCharCount(MAX_TITLE_LENGTH);
     } else {
-      setEditTitleValue(title);
+      setCharCount(raw.length);
     }
   };
 
-  const handleTitleKeyDown = (e: React.KeyboardEvent) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    const paste = e.clipboardData.getData('text/plain').replace(/[\r\n]+/g, ' ');
+    const current = spanRef.current?.textContent || '';
+    const sel = window.getSelection();
+    const selectedLength = sel?.toString().length || 0;
+    const available = Math.max(0, MAX_TITLE_LENGTH - (current.length - selectedLength));
+    if (available > 0) {
+      const insert = paste.slice(0, available);
+      const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      if (range) {
+        range.deleteContents();
+        const node = document.createTextNode(insert);
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } else if (spanRef.current) {
+        spanRef.current.textContent = current + insert;
+      }
+      setCharCount(spanRef.current?.textContent?.length || 0);
+    }
+  };
+
+  const commitTitle = () => {
+    setIsEditingTitle(false);
+    const text = spanRef.current?.textContent?.trim().slice(0, MAX_TITLE_LENGTH);
+    if (text && text !== (isUntitled ? 'untitled dossier' : title)) {
+      onTitleChange(text);
+    } else if (spanRef.current) {
+      spanRef.current.textContent = isUntitled ? 'untitled dossier' : title;
+    }
+  };
+
+  const cancelTitle = () => {
+    setIsEditingTitle(false);
+    if (spanRef.current) {
+      spanRef.current.textContent = isUntitled ? 'untitled dossier' : title;
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
     if (e.key === 'Enter') {
-      handleTitleSubmit();
-    } else if (e.key === 'Escape') {
-      setIsEditingTitle(false);
-      setEditTitleValue(title);
+      e.preventDefault();
+      spanRef.current?.blur();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelTitle();
+      return;
+    }
+    // Block regular key inputs beyond MAX_TITLE_LENGTH
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const current = spanRef.current?.textContent || '';
+      const sel = window.getSelection();
+      const selectedLength = sel?.toString().length || 0;
+      if (current.length - selectedLength >= MAX_TITLE_LENGTH) {
+        e.preventDefault();
+      }
     }
   };
 
@@ -85,40 +156,43 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
       </button>
 
       <div className="rhead-brand">
-        Kestrel<small>Growth dossier</small>
+        Kestrel<small>growth research dossier, drawn from Lenny’s Podcast archive</small>
       </div>
 
       <div className="rhead-title">
-        {isEditingTitle ? (
-          <input
-            ref={titleInputRef}
-            type="text"
-            className="rhead-title-input"
-            value={editTitleValue}
-            onChange={(e) => setEditTitleValue(e.target.value)}
-            onBlur={handleTitleSubmit}
-            onKeyDown={handleTitleKeyDown}
-            style={{
-              font: 'italic 500 14.5px var(--f-disp)',
-              color: 'var(--ink)',
-              background: 'var(--surface)',
-              border: '1px solid var(--accent)',
-              borderRadius: '3px',
-              padding: '2px 8px',
-              outline: 'none',
-              textAlign: 'center',
-              width: 'min(420px, 46vw)',
-            }}
-          />
-        ) : (
+        <span
+          ref={spanRef}
+          id="rheadTitle"
+          className={`rhead-title-text${isEditingTitle ? ' is-editing' : ''}`}
+          data-empty={isUntitled ? 'true' : 'false'}
+          contentEditable={isEditingTitle}
+          suppressContentEditableWarning
+          spellCheck={false}
+          title={isEditingTitle ? undefined : 'Double-click to retitle this dossier'}
+          onDoubleClick={() => {
+            setIsEditingTitle(true);
+            setCharCount((isUntitled ? '' : title).length);
+          }}
+          onInput={handleInput}
+          onPaste={handlePaste}
+          onBlur={commitTitle}
+          onKeyDown={handleTitleKeyDown}
+        >
+          {isUntitled ? 'untitled dossier' : title}
+        </span>
+        {isEditingTitle && (
           <span
-            id="rheadTitle"
-            data-empty={isUntitled ? 'true' : 'false'}
-            title="Click to retitle this dossier"
-            onClick={() => !isUntitled && setIsEditingTitle(true)}
-            style={{ cursor: isUntitled ? 'default' : 'pointer' }}
+            className="rhead-title-counter"
+            data-limit={
+              charCount >= MAX_TITLE_LENGTH
+                ? 'reached'
+                : charCount >= MAX_TITLE_LENGTH - 10
+                ? 'near'
+                : 'normal'
+            }
+            aria-live="polite"
           >
-            {isUntitled ? 'untitled dossier' : title}
+            {charCount} / {MAX_TITLE_LENGTH}
           </span>
         )}
       </div>
@@ -134,7 +208,10 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
             setIsColophonOpen(!isColophonOpen);
           }}
         >
-          <span className="dot" aria-hidden="true"></span>
+          <span
+            className={`dot${isComposing ? ' composing' : ''}${currentProvider?.status === 'offline' ? ' offline' : ''}`}
+            aria-hidden="true"
+          />
           <span id="coloLabel">
             Set in {currentProvider?.model || 'qwen2.5:1.5b'} · {currentProvider?.name.toLowerCase() || 'local'}
           </span>

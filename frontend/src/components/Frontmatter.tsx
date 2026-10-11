@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ComposeMode, ArtifactKind } from '../types';
+import { stampPress } from '../lib/motion';
 
 interface FrontmatterProps {
   onSubmit: (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => void;
@@ -52,36 +53,28 @@ export const Frontmatter: React.FC<FrontmatterProps> = ({
     }
   };
 
-  const handleTryClick = (prefill: string) => {
-    setQueryText(prefill);
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
-  };
-
   return (
     <section className="frontmatter" id="frontmatter" aria-label="New dossier">
-      <div className="fm-mast">
-        <span className="left">
-          Kestrel<em>a growth research dossier, drawn from Lenny’s Podcast archive</em>
-        </span>
-        <span className="right">Research · Decide · Create · Refine</span>
-      </div>
-
       <div className="fm-col">
         <h1 className="hero-h" id="heroH">
-          <span className="w">What</span> <span className="w">are</span> <span className="w">you</span>{' '}
-          <span className="w wonk">working</span>
-          <button
-            type="button"
-            className="star sn-ref"
-            data-note="land-1"
-            data-n="*"
-            aria-label="Read the margin note"
-          >
-            ✳
-          </button>{' '}
-          <span className="w">through?</span>
+          <span className="hero-row">
+            <span className="w">What</span> <span className="w">are</span> <span className="w">you</span>
+          </span>
+          <span className="hero-row">
+            <span className="w wonk">working</span>
+            <button
+              type="button"
+              className="star sn-ref"
+              data-note="land-1"
+              data-n="*"
+              aria-label="Read the margin note"
+            >
+              ✳
+            </button>
+          </span>
+          <span className="hero-row">
+            <span className="w">through?</span>
+          </span>
         </h1>
         <p className="hero-lede">
           An evidence-first research companion. Every claim in this dossier is typeset with its
@@ -103,170 +96,6 @@ export const Frontmatter: React.FC<FrontmatterProps> = ({
             <p className="stamp snote-stamp">This note is itself a demonstration</p>
           </div>
         </aside>
-      </div>
-
-      <form className="write" id="fmForm" onSubmit={handleSubmit} noValidate>
-        {showContext && (
-          <div className="ctx-box">
-            <div className="ctx-head">
-              <span className="sc">Product context</span>
-              <span className="ctx-opt">Optional</span>
-              <button
-                type="button"
-                className="ctx-x"
-                onClick={() => {
-                  setShowContext(false);
-                  setProductContext('');
-                }}
-              >
-                Remove
-              </button>
-            </div>
-            <p className="ctx-help">
-              Stage, customer, goal, constraints. Kept strictly apart from transcript evidence — never
-              cited as podcast fact.
-            </p>
-            <textarea
-              className="ctx-ta"
-              rows={2}
-              value={productContext}
-              onChange={(e) => setProductContext(e.target.value)}
-              placeholder="e.g. Seed-stage B2B task manager, self-serve signups, ~400 trials a month…"
-            />
-          </div>
-        )}
-
-        <div className="write-line">
-          <span className="write-glyph" aria-hidden="true">
-            ¶
-          </span>
-          <label className="sr-only" htmlFor="fmTa">
-            Write your question
-          </label>
-          <textarea
-            ref={textareaRef}
-            id="fmTa"
-            rows={1}
-            value={queryText}
-            onChange={(e) => setQueryText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={PLACEHOLDERS[mode]}
-          />
-        </div>
-
-        <div className="write-row">
-          <div className="msel" role="radiogroup" aria-label="Compose as">
-            <span className="as" aria-hidden="true">
-              AS:
-            </span>
-            <label>
-              <input
-                type="radio"
-                name="fmMode"
-                value="research"
-                checked={mode === 'research'}
-                onChange={() => setMode('research')}
-              />
-              <span>Query</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="fmMode"
-                value="growth_brief"
-                checked={mode === 'growth_brief'}
-                onChange={() => setMode('growth_brief')}
-              />
-              <span>Brief</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="fmMode"
-                value="essay"
-                checked={mode === 'essay'}
-                onChange={() => setMode('essay')}
-              />
-              <span>Essay</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="fmMode"
-                value="artifact"
-                checked={mode === 'artifact'}
-                onChange={() => setMode('artifact')}
-              />
-              <span>Plate</span>
-            </label>
-
-            {mode === 'artifact' && (
-              <span className="msel fmt">
-                <label>
-                  <input
-                    type="radio"
-                    name="fmFmt"
-                    value="markdown"
-                    checked={format === 'markdown'}
-                    onChange={() => setFormat('markdown')}
-                  />
-                  <span>Markdown</span>
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="fmFmt"
-                    value="html"
-                    checked={format === 'html'}
-                    onChange={() => setFormat('html')}
-                  />
-                  <span>HTML</span>
-                </label>
-              </span>
-            )}
-          </div>
-
-          <div className="write-acts">
-            {!showContext && (
-              <button
-                type="button"
-                className="ctx-toggle"
-                onClick={() => setShowContext(true)}
-              >
-                + product context
-              </button>
-            )}
-            <button
-              type="submit"
-              className="tbtn"
-              disabled={isComposing || !queryText.trim()}
-            >
-              {isComposing ? 'Composing…' : 'Bind to archive ↵'}
-            </button>
-          </div>
-        </div>
-      </form>
-
-      <div className="try">
-        <span className="sc">Try</span>
-        <button
-          type="button"
-          className="try-q"
-          onClick={() =>
-            handleTryClick('How can an early-stage SaaS improve activation without hurting retention?')
-          }
-        >
-          “How can an early-stage SaaS improve activation without hurting retention?”
-        </button>
-        <button
-          type="button"
-          className="try-q"
-          onClick={() =>
-            handleTryClick('What makes a pricing page convert for a self-serve B2B product?')
-          }
-        >
-          “What makes a pricing page convert?”
-        </button>
       </div>
 
       <div className="idx" role="list">
@@ -338,9 +167,152 @@ export const Frontmatter: React.FC<FrontmatterProps> = ({
         </button>
       </div>
 
-      <p className="fm-foot">
-        Editorial Research Studio · all citations map to verified archive chunks · nothing unsourced
-      </p>
+      <div className="fm-dock" role="region" aria-label="Query dock">
+        <div className="fm-dock-in">
+          <form className="write" id="fmForm" onSubmit={handleSubmit} noValidate>
+            {showContext && (
+              <div className="ctx-box">
+                <div className="ctx-head">
+                  <span className="sc">Product context</span>
+                  <span className="ctx-opt">Optional</span>
+                  <button
+                    type="button"
+                    className="ctx-x"
+                    onClick={() => {
+                      setShowContext(false);
+                      setProductContext('');
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p className="ctx-help">
+                  Stage, customer, goal, constraints. Kept strictly apart from transcript evidence — never
+                  cited as podcast fact.
+                </p>
+                <textarea
+                  className="ctx-ta"
+                  rows={2}
+                  value={productContext}
+                  onChange={(e) => setProductContext(e.target.value)}
+                  placeholder="e.g. Seed-stage B2B task manager, self-serve signups, ~400 trials a month…"
+                />
+              </div>
+            )}
+
+            <div className="write-line">
+              <span className="write-glyph" aria-hidden="true">
+                ¶
+              </span>
+              <label className="sr-only" htmlFor="fmTa">
+                Write your question
+              </label>
+              <textarea
+                ref={textareaRef}
+                id="fmTa"
+                rows={1}
+                value={queryText}
+                onChange={(e) => setQueryText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={PLACEHOLDERS[mode]}
+              />
+            </div>
+
+            <div className="write-row">
+              <div className="msel" role="radiogroup" aria-label="Compose as">
+                <span className="as" aria-hidden="true">
+                  AS:
+                </span>
+                <label>
+                  <input
+                    type="radio"
+                    name="fmMode"
+                    value="research"
+                    checked={mode === 'research'}
+                    onChange={() => setMode('research')}
+                  />
+                  <span>Query</span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="fmMode"
+                    value="growth_brief"
+                    checked={mode === 'growth_brief'}
+                    onChange={() => setMode('growth_brief')}
+                  />
+                  <span>Brief</span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="fmMode"
+                    value="essay"
+                    checked={mode === 'essay'}
+                    onChange={() => setMode('essay')}
+                  />
+                  <span>Essay</span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="fmMode"
+                    value="artifact"
+                    checked={mode === 'artifact'}
+                    onChange={() => setMode('artifact')}
+                  />
+                  <span>Plate</span>
+                </label>
+
+                {mode === 'artifact' && (
+                  <span className="msel fmt">
+                    <label>
+                      <input
+                        type="radio"
+                        name="fmFmt"
+                        value="markdown"
+                        checked={format === 'markdown'}
+                        onChange={() => setFormat('markdown')}
+                      />
+                      <span>Markdown</span>
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="fmFmt"
+                        value="html"
+                        checked={format === 'html'}
+                        onChange={() => setFormat('html')}
+                      />
+                      <span>HTML</span>
+                    </label>
+                  </span>
+                )}
+              </div>
+
+              <div className="write-acts">
+                {!showContext && (
+                  <button
+                    type="button"
+                    className="ctx-toggle"
+                    onClick={() => setShowContext(true)}
+                  >
+                    + product context
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="tbtn"
+                  disabled={isComposing || !queryText.trim()}
+                  onClick={(e) => stampPress(e.currentTarget)}
+                >
+                  {isComposing ? 'Composing…' : 'Bind to archive ↵'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
     </section>
   );
 };

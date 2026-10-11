@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ComposeMode, ArtifactKind } from '../types';
+import { stampPress } from '../lib/motion';
 
 interface ComposerBarProps {
   onSubmit: (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => void;
@@ -193,6 +194,7 @@ export const ComposerBar: React.FC<ComposerBarProps> = ({
                 type="submit"
                 className="tbtn"
                 disabled={isComposing || !text.trim()}
+                onClick={(e) => stampPress(e.currentTarget)}
               >
                 {isComposing ? 'Composing…' : 'Bind ↵'}
               </button>

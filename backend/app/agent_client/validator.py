@@ -44,6 +44,7 @@ class ValidatedResearchResponse(BaseModel):
     mode: Literal["research"] = "research"
     answer_markdown: str
     citations: list[CitationItem] = Field(default_factory=list)
+    scope: Literal["in_scope", "out_of_scope"] = "in_scope"
     insufficient_evidence: bool = False
     follow_up_question: str | None = None
 
@@ -246,9 +247,17 @@ def validate_agent_response(
         follow_up = payload.get("follow_up_question")
         follow_up_str = str(follow_up).strip() if follow_up else None
 
+        scope_val = str(payload.get("scope", "in_scope")).strip().lower()
+        scope: Literal["in_scope", "out_of_scope"] = (
+            "out_of_scope" if scope_val == "out_of_scope" else "in_scope"
+        )
+        raw_insufficient = bool(payload.get("insufficient_evidence", False))
+        insufficient = True if scope == "out_of_scope" else raw_insufficient
+
         return ValidatedResearchResponse(
             answer_markdown=answer,
             citations=cleaned_citations,
-            insufficient_evidence=bool(payload.get("insufficient_evidence", False)),
+            scope=scope,
+            insufficient_evidence=insufficient,
             follow_up_question=follow_up_str,
         )

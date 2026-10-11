@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { GrowthBriefData } from '../types';
+import { stampPress } from '../lib/motion';
 
 interface GrowthBriefModalProps {
   isOpen: boolean;
@@ -127,31 +128,35 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
       aria-labelledby="foldH"
       aria-hidden={!isOpen}
     >
-      <header className="fold-bar">
-        <button
-          ref={returnBtnRef}
-          type="button"
-          className="tbtn"
-          id="foldBack"
-          onClick={onClose}
-        >
-          ← Return to the dossier
-        </button>
-        <span className="fold-spacer" />
-        <span className="imp-chip" id="impChip">
-          {brief.isDemo ? 'design tour' : `${getOrdinalImpression(brief.version)} impression`}
-        </span>
-        <button
-          type="button"
-          className="tbtn solid"
-          id="foldSave"
-          onClick={() => onSaveImpression(draft)}
-        >
-          Bind impression
-        </button>
-      </header>
+      <div className="fold-doc-wrap">
+        <header className="fold-bar">
+          <button
+            ref={returnBtnRef}
+            type="button"
+            className="tbtn"
+            id="foldBack"
+            onClick={onClose}
+          >
+            ← Return to the dossier
+          </button>
+          <span className="fold-spacer" />
+          <span className="imp-chip" id="impChip">
+            {brief.isDemo ? 'design tour' : `${getOrdinalImpression(brief.version)} impression`}
+          </span>
+          <button
+            type="button"
+            className="tbtn solid"
+            id="foldSave"
+            onClick={(e) => {
+              stampPress(e.currentTarget);
+              onSaveImpression(draft);
+            }}
+          >
+            Bind impression
+          </button>
+        </header>
 
-      <div className="fold-doc">
+        <div className="fold-doc">
         <p className="sc kick">Kestrel · Growth Brief</p>
         <h1 id="foldH">{draft.title}</h1>
         <p className="fold-sub">
@@ -338,5 +343,6 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
         </section>
       </div>
     </div>
+  </div>
   );
 };

@@ -238,9 +238,14 @@ ${evidenceText}`;
       }
     }
 
+    const userPromptReminder =
+      payload.evidence.length > 0
+        ? "\n\nRemember: For substantive claims, cite evidence using tags like [E1] and populate the \"citations\" array. For conversational greetings or identity queries, respond warmly with citations: []. Output strictly valid JSON matching the schema."
+        : "\n\nRemember: For conversational queries or assistance, respond warmly as Kestrel with citations: [] and insufficient_evidence: false. Output strictly valid JSON matching the schema.";
+
     piMessages.push({
       role: "user",
-      content: `${payload.current_user_message}\n\nRemember: Cite the evidence with tags like [E1] and populate the "citations" array with [{"evidence_id": "E1", "supports": "..."}]. Output strictly valid JSON.`,
+      content: `${payload.current_user_message}${userPromptReminder}`,
       timestamp: Date.now(),
     });
 
