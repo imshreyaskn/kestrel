@@ -1,20 +1,24 @@
 /**
- * Editorial Research Studio Demo & Baseline Data
- * Derived from the prototype and the Lenny Podcast archive corpus.
- * Every passage is verbatim from transcripts; notes are cited in the margin.
+ * Editorial Research Studio — DESIGN TOUR fixtures only.
+ *
+ * Everything in this module is used exclusively by the UI States Tray
+ * ("design tour") to preview key visual states. Tour data is never sent to
+ * the backend, never persisted, and is clearly marked in the rail and
+ * viewer as "design tour · not persisted". All real user interactions hit
+ * PostgreSQL through the typed API client.
  */
 
-import { Citation, ArtifactData, SessionData, GrowthBriefData } from '../types';
+import { ArtifactData, GrowthBriefData, SessionData } from '../types';
 
 export const CSP_HEADER = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; form-action 'none'; base-uri 'none'">`;
 
-export const CITATION_LIBRARY: Record<string, Omit<Citation, 'id' | 'refIndex'>> = {
+export const CITATION_LIBRARY: Record<string, Omit<import('../types').Citation, 'id' | 'refIndex'>> = {
   vohra: {
     speaker: 'Rahul Vohra',
     affiliation: 'Superhuman',
     episodeTitle: 'How Superhuman Built an Engine for Growth',
     episodeUrl: 'https://www.lennyspodcast.com/guests/rahul-vohra/',
-    provenanceStamp: 'Chunk 142 · rank №1 · semantic 0.61',
+    provenanceStamp: 'design tour fixture · not a live retrieval',
     quote:
       'We took the users who said they’d be very disappointed and asked what benefit they got, in their own words. Once we understood what delighted them, we could chart a path so every new user experienced that same delight — as quickly as possible.',
   },
@@ -23,7 +27,7 @@ export const CITATION_LIBRARY: Record<string, Omit<Citation, 'id' | 'refIndex'>>
     affiliation: 'Growth advisor',
     episodeTitle: 'Retention: The Core of Growth',
     episodeUrl: 'https://www.lennyspodcast.com/guests/casey-winters/',
-    provenanceStamp: 'Chunk 17 · rank №4 · semantic 0.52',
+    provenanceStamp: 'design tour fixture · not a live retrieval',
     quote:
       'If your retention curve doesn’t flatten, you don’t have a growth problem — you have a leaking bucket. The best growth teams spend their first months flattening the curve before they pour anything in.',
   },
@@ -32,7 +36,7 @@ export const CITATION_LIBRARY: Record<string, Omit<Citation, 'id' | 'refIndex'>>
     affiliation: 'Duolingo',
     episodeTitle: 'How Duolingo Reignited User Growth',
     episodeUrl: 'https://www.lennyspodcast.com/guests/jorge-mazal/',
-    provenanceStamp: 'Chunk 61 · rank №3 · semantic 0.57',
+    provenanceStamp: 'design tour fixture · not a live retrieval',
     quote:
       'The streak became the anchor of the habit loop. We focused on making the first lesson fast and personally calibrated, because the sooner a learner succeeds on day one, the more likely the habit forms at all.',
   },
@@ -41,7 +45,7 @@ export const CITATION_LIBRARY: Record<string, Omit<Citation, 'id' | 'refIndex'>>
     affiliation: 'Growth advisor',
     episodeTitle: 'How B2B Companies Grow with a Product-Led Motion',
     episodeUrl: 'https://www.lennyspodcast.com/guests/elena-verna/',
-    provenanceStamp: 'Chunk 88 · rank №2 · semantic 0.59',
+    provenanceStamp: 'design tour fixture · not a live retrieval',
     quote:
       'In product-led growth, the product is the top of the funnel. Users who reach value expand themselves — seat by seat, feature by feature. Sales doesn’t chase leads; it follows usage.',
   },
@@ -50,7 +54,7 @@ export const CITATION_LIBRARY: Record<string, Omit<Citation, 'id' | 'refIndex'>>
     affiliation: 'PLG author',
     episodeTitle: 'A Deep Dive on Product-Led Growth',
     episodeUrl: 'https://www.lennyspodcast.com/guests/wes-bush/',
-    provenanceStamp: 'Chunk 203 · rank №1 · semantic 0.63',
+    provenanceStamp: 'design tour fixture · not a live retrieval',
     quote:
       'Your pricing page should sell the outcome, not the feature list. Self-serve buyers scan for one thing: which plan matches my problem. Make that decision take ten seconds.',
   },
@@ -59,7 +63,7 @@ export const CITATION_LIBRARY: Record<string, Omit<Citation, 'id' | 'refIndex'>>
     affiliation: 'ProfitWell',
     episodeTitle: 'How to Price and Package Your Product',
     episodeUrl: 'https://www.lennyspodcast.com/guests/patrick-campbell/',
-    provenanceStamp: 'Chunk 44 · rank №2 · semantic 0.55',
+    provenanceStamp: 'design tour fixture · not a live retrieval',
     quote:
       'Test one pricing change at a time and watch activation alongside revenue. The cheapest conversion win is almost always clarity — not discounts.',
   },
@@ -93,7 +97,7 @@ dd{margin:0;font-size:14px}
 <p>New workspaces that start from a guided template complete a first project within 7 days more often than those given a blank canvas.</p>
 <h2>The change</h2>
 <p>Replace the post-signup setup checklist with a template gallery step. All other setup is deferred until the first project exists.</p>
-<h2>Audience &amp; split</h2>
+<h2>Audience & split</h2>
 <p>New self-serve workspaces, 50 / 50 split, running for two weeks of signups.</p>
 <h2>Metrics</h2>
 <dl>
@@ -136,7 +140,7 @@ not causal proof — and guard retention in whatever you test.
 - Duolingo — *How Duolingo Reignited User Growth* (Jorge Mazal)
 - *How B2B Companies Grow with a Product-Led Motion* (Elena Verna)`;
 
-export const INITIAL_ARTIFACTS: Record<string, ArtifactData> = {
+export const TOUR_ARTIFACTS: Record<string, ArtifactData> = {
   a1: {
     id: 'a1',
     file: 'activation-one-pager.html',
@@ -145,7 +149,7 @@ export const INITIAL_ARTIFACTS: Record<string, ArtifactData> = {
     src: PLATE_HTML_CONTENT,
     mdHtml: PLATE_HTML_CONTENT,
     version: 1,
-    impression: 'first impression · v1',
+    impression: 'design tour plate · not persisted',
   },
   a2: {
     id: 'a2',
@@ -155,90 +159,148 @@ export const INITIAL_ARTIFACTS: Record<string, ArtifactData> = {
     src: PLATE_MD_CONTENT,
     mdHtml: PLATE_MD_CONTENT,
     version: 1,
-    impression: 'first impression · v1',
+    impression: 'design tour plate · not persisted',
   },
 };
 
-export const INITIAL_GROWTH_BRIEF: GrowthBriefData = {
-  id: 'brief-1',
+export const TOUR_BRIEF: GrowthBriefData = {
+  id: 'tour-brief',
   sessionId: 'pricing',
   title: 'Improve week-one activation without harming retention',
-  sub: 'A structured deliverable drafted from the dossier’s research — sections are editable, so click any paragraph and revise it.',
   version: 1,
-  impressionsCount: 1,
-  sections: [
-    {
-      num: 'I.',
-      title: 'Problem',
-      badge: 'User context',
-      badgeType: 'user',
-      content:
-        'Flowstate is a seed-stage B2B task manager with self-serve sign-up — roughly 400 trials a month. Sign-ups are steady, but only about 23% of new workspaces complete a first project within seven days, and week-4 retention tracks that first project almost perfectly. Goal: raise week-one activation without degrading retention or support load.',
-    },
-    {
-      num: 'II.',
-      title: 'Research & evidence',
-      badge: 'Transcript evidence',
-      badgeType: 'evidence',
-      evidenceItems: [
-        {
-          text: 'Speed toward the delighted users’ “aha” — activation is time-to-that-behavior, not steps completed',
-          refIndex: 1,
-        },
-        {
-          text: 'Flatten the retention curve before pouring acquisition into the funnel',
-          refIndex: 2,
-        },
-        {
-          text: 'First-run success must be the user’s own outcome, not a product checklist',
-          refIndex: 3,
-        },
-        {
-          text: 'In product-led growth, reached-value users expand themselves — define activation as value, not seat invitations',
-          refIndex: 4,
-        },
-      ],
-    },
-    {
-      num: 'III.',
-      title: 'Recommendation',
-      badge: 'Assistant synthesis',
-      badgeType: 'synthesis',
-      content:
-        'Rebuild first-run around a single outcome — a real first project completed in the first session — by replacing the setup checklist with a guided template gallery, and instrument time-to-first-project as the activation metric. Watch the retention curve by cohort; any loss of flattening is a stop signal.',
-      assumptions:
-        'Assumes templates meaningfully cut blank-page time, and that the signup-to-first-project drop is exploration friction rather than weak intent. The archive offers expert pattern, not causal proof for this product — see the experiment below.',
-    },
-    {
-      num: 'IV.',
-      title: 'Experiment',
-      experiment: {
-        hypothesis:
-          'New workspaces that start from a guided template complete a first project within 7 days more often than those given a blank canvas.',
-        change:
-          'Replace the post-signup checklist with a template gallery step; defer all other setup until the first project exists.',
-        audience: 'New self-serve workspaces, 50 / 50 split, two weeks of signups.',
-        primaryMetric:
-          '% of new workspaces completing a first project within 7 days — baseline ≈ 23% (user-supplied).',
-        guardrails: 'Week-4 retention by cohort · support contacts per signup.',
-        decisionRule:
-          'Ship at ≥ +5 points absolute with no guardrail regression; iterate between 0 and 5; revert if retention drops.',
-      },
-    },
-    {
-      num: 'V.',
-      title: 'Next deliverable',
-    },
-  ],
+  status: 'draft',
+  productContext: null,
+  problem:
+    'Flowstate is a seed-stage B2B task manager with self-serve sign-up — roughly 400 trials a month. Sign-ups are steady, but only about 23% of new workspaces complete a first project within seven days, and week-4 retention tracks that first project almost perfectly. Goal: raise week-one activation without degrading retention or support load.',
+  researchSummary:
+    'Speed toward the delighted users’ “aha” — activation is time-to-that-behavior, not steps completed. Flatten the retention curve before pouring acquisition into the funnel. First-run success must be the user’s own outcome, not a product checklist. In product-led growth, reached-value users expand themselves — define activation as value, not seat invitations.',
+  recommendation:
+    'Rebuild first-run around a single outcome — a real first project completed in the first session — by replacing the setup checklist with a guided template gallery, and instrument time-to-first-project as the activation metric. Watch the retention curve by cohort; any loss of flattening is a stop signal.',
+  assumptions:
+    'Assumes templates meaningfully cut blank-page time, and that the signup-to-first-project drop is exploration friction rather than weak intent. The archive offers expert pattern, not causal proof for this product — see the experiment below.',
+  experiment: {
+    hypothesis:
+      'New workspaces that start from a guided template complete a first project within 7 days more often than those given a blank canvas.',
+    change:
+      'Replace the post-signup checklist with a template gallery step; defer all other setup until the first project exists.',
+    segment: 'New self-serve workspaces, 50 / 50 split, two weeks of signups.',
+    success_metric:
+      '% of new workspaces completing a first project within 7 days — baseline ≈ 23% (user-supplied).',
+    guardrail_metric: 'Week-4 retention by cohort · support contacts per signup.',
+    decision_rule:
+      'Ship at ≥ +5 points absolute with no guardrail regression; iterate between 0 and 5; revert if retention drops.',
+  },
+  risks:
+    'The archive offers expert pattern, not causal proof for this specific product.\nIf the signup drop is weak intent rather than exploration friction, templates will not move activation.\nSupport load may shift from setup questions to template-choice questions.',
+  nextDeliverable:
+    'A Ship 30-style essay arguing that activation improves when you narrow the first run — or a one-pager experiment plate cast from this brief.',
+  isDemo: true,
 };
 
-export const INITIAL_SESSIONS: Record<string, SessionData> = {
+// ---------------------------------------------------------------------------
+// Design-tour sessions (rail group: "Design tour")
+// ---------------------------------------------------------------------------
+const TOUR_META = 'design tour · not persisted';
+const nowIso = () => new Date().toISOString();
+
+function tourAnswer(
+  idBase: string,
+  lead: string,
+  sections: Array<{ h: string; paragraphs: string[] }>,
+  citations: import('../types').Citation[],
+  stamp: string
+): import('../types').ManuscriptEntry {
+  return {
+    id: `ans-${idBase}`,
+    kind: 'answer',
+    answerData: {
+      lead,
+      sections: sections.map((s, idx) => ({
+        rn: ['I', 'II', 'III', 'IV'][idx] ?? '§',
+        h: s.h,
+        paragraphs: s.paragraphs,
+      })),
+      stamp,
+    },
+    citations,
+    createdAt: nowIso(),
+  };
+}
+
+export const TOUR_SESSIONS: Record<string, SessionData> = {
+  'live-act': {
+    id: 'live-act',
+    num: 'T1',
+    title: 'Improving activation without hurting retention',
+    meta: TOUR_META,
+    kind: 'demo',
+    isDemo: true,
+    entries: [
+      {
+        id: 'q-act',
+        kind: 'query',
+        queryText:
+          'How can an early-stage SaaS improve activation without hurting retention?',
+        queryMeta: {
+          time: 'Today · 2:15 PM',
+          modeLabel: 'Query',
+          hasContext: true,
+        },
+        createdAt: nowIso(),
+      },
+      tourAnswer(
+        'act',
+        'The pattern across the interviews is consistent: activation gains that hold up come from narrowing the first run — carrying a new user to one personally meaningful outcome, faster — not from adding steps, tours, or pressure. Retention follows the value, not the funnel.',
+        [
+          {
+            h: 'Find the moment worth speeding toward',
+            paragraphs: [
+              'Rahul Vohra describes how Superhuman used its product-market-fit survey as a map rather than a score: profile the users who would be “very disappointed” without the product, find what they were actually doing when delight happened, then rebuild onboarding so every new user reaches that same moment sooner. The activation metric that falls out is time-to-that-behavior — not steps completed. [E1]',
+            ],
+          },
+          {
+            h: 'Read the retention curve before touching the funnel',
+            paragraphs: [
+              'Casey Winters is blunt about sequencing: retention is the core of growth, and a curve that never flattens means acquisition is filling a leaking bucket. Before shipping onboarding changes, find which cohorts flatten, where the drop concentrates, and whether the users you are activating are the ones who stay. [E2]',
+            ],
+          },
+          {
+            h: 'Make the first outcome the user’s own',
+            paragraphs: [
+              'Duolingo’s turnaround focused on the habit itself — a first lesson that is fast and calibrated to the learner, wrapped in a streak the learner owns. The lesson transfers: define activation as the user’s first real success — a project created, a first aha — not a checklist the product imposes. [E3]',
+            ],
+          },
+          {
+            h: 'In self-serve B2B, activation is the expansion engine',
+            paragraphs: [
+              'Elena Verna’s framing for product-led growth: the product is the funnel. Users who reach value expand their own accounts, and sales follows usage signals instead of cold outreach. That only compounds when “activated” means reached-value — not “invited five teammates.” [E4]',
+            ],
+          },
+        ],
+        [
+          { id: 'sn-live-act-E1', refIndex: 1, ...CITATION_LIBRARY.vohra },
+          { id: 'sn-live-act-E2', refIndex: 2, ...CITATION_LIBRARY.winters },
+          { id: 'sn-live-act-E3', refIndex: 3, ...CITATION_LIBRARY.mazal },
+          { id: 'sn-live-act-E4', refIndex: 4, ...CITATION_LIBRARY.verna },
+        ],
+        'design tour fixture — compose a real query to bind live citations'
+      ),
+    ],
+    artifacts: [],
+    briefCount: 0,
+    noteSeq: 4,
+    plateSeq: 0,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  },
+
   pricing: {
     id: 'pricing',
-    num: '01',
+    num: 'T2',
     title: 'Pricing page teardown — Flowstate',
-    meta: 'query · 2 notes',
-    kind: 'pricing',
+    meta: TOUR_META,
+    kind: 'demo',
+    isDemo: true,
     entries: [
       {
         id: 'q-pricing',
@@ -251,43 +313,29 @@ export const INITIAL_SESSIONS: Record<string, SessionData> = {
         },
         createdAt: '2026-10-08T16:12:00Z',
       },
-      {
-        id: 'a-pricing',
-        kind: 'answer',
-        answerData: {
-          lead: 'Two ideas recur across the pricing conversations: match plans to the buyer’s problem rather than your feature list, and optimize for decision speed. A self-serve visitor is scanning for “which one is mine” — clarity beats cleverness, and both beat discounts.',
-          sections: [
-            {
-              rn: 'I',
-              h: 'Match plans to buyer jobs',
-              bodyHtml:
-                'Wes Bush’s framing is that a pricing page should sell the outcome. Self-serve buyers arrive with a job to do; the page’s only job is to mirror their problem back in plain language and attach a plan to it{{bush}}. Feature matrices force the buyer to translate — and translation is where self-serve conversion goes to die.',
-              citedRefIndices: [1],
-            },
-            {
-              rn: 'II',
-              h: 'Clarity over discounting',
-              bodyHtml:
-                'Patrick Campbell’s caution on sequencing: test one pricing change at a time, and watch activation alongside revenue — the cheapest conversion win is almost always clarity, not a lower number{{campbell}}.',
-              citedRefIndices: [2],
-            },
-          ],
-          stamp: 'Set in qwen2.5:1.5b · local — 2 citations verified',
-        },
-        citations: [
+      tourAnswer(
+        'pricing',
+        'Two ideas recur across the pricing conversations: match plans to the buyer’s problem rather than your feature list, and optimize for decision speed. A self-serve visitor is scanning for “which one is mine” — clarity beats cleverness, and both beat discounts.',
+        [
           {
-            id: 'sn-pricing-1',
-            refIndex: 1,
-            ...CITATION_LIBRARY.bush,
+            h: 'Match plans to buyer jobs',
+            paragraphs: [
+              'Wes Bush’s framing is that a pricing page should sell the outcome. Self-serve buyers arrive with a job to do; the page’s only job is to mirror their problem back in plain language and attach a plan to it [E1]. Feature matrices force the buyer to translate — and translation is where self-serve conversion goes to die.',
+            ],
           },
           {
-            id: 'sn-pricing-2',
-            refIndex: 2,
-            ...CITATION_LIBRARY.campbell,
+            h: 'Clarity over discounting',
+            paragraphs: [
+              'Patrick Campbell’s caution on sequencing: test one pricing change at a time, and watch activation alongside revenue — the cheapest conversion win is almost always clarity, not a lower number [E2].',
+            ],
           },
         ],
-        createdAt: '2026-10-08T16:12:05Z',
-      },
+        [
+          { id: 'sn-pricing-E1', refIndex: 1, ...CITATION_LIBRARY.bush },
+          { id: 'sn-pricing-E2', refIndex: 2, ...CITATION_LIBRARY.campbell },
+        ],
+        'design tour fixture — compose a real query to bind live citations'
+      ),
     ],
     artifacts: [],
     briefCount: 0,
@@ -296,12 +344,14 @@ export const INITIAL_SESSIONS: Record<string, SessionData> = {
     createdAt: '2026-10-08T16:12:00Z',
     updatedAt: '2026-10-08T16:12:05Z',
   },
+
   empty1: {
     id: 'empty1',
-    num: '02',
+    num: 'T3',
     title: 'Onboarding email sequence ideas',
-    meta: 'blank dossier',
-    kind: 'empty',
+    meta: TOUR_META,
+    kind: 'demo',
+    isDemo: true,
     entries: [
       {
         id: 'blank-1',
@@ -315,25 +365,5 @@ export const INITIAL_SESSIONS: Record<string, SessionData> = {
     plateSeq: 0,
     createdAt: '2026-10-09T09:00:00Z',
     updatedAt: '2026-10-09T09:00:00Z',
-  },
-  empty2: {
-    id: 'empty2',
-    num: '03',
-    title: 'Duolingo growth loops — notes',
-    meta: 'blank dossier',
-    kind: 'empty',
-    entries: [
-      {
-        id: 'blank-2',
-        kind: 'blank',
-        createdAt: '2026-10-09T10:00:00Z',
-      },
-    ],
-    artifacts: [],
-    briefCount: 0,
-    noteSeq: 0,
-    plateSeq: 0,
-    createdAt: '2026-10-09T10:00:00Z',
-    updatedAt: '2026-10-09T10:00:00Z',
   },
 };

@@ -3,7 +3,6 @@ import {
   AppView,
   ArtifactData,
   ArtifactKind,
-  Citation,
   ComposeMode,
   ComposingStep,
   GrowthBriefData,
@@ -13,13 +12,9 @@ import {
   SessionData,
   ToastMessage,
 } from './types';
-import { api } from './lib/api';
-import {
-  INITIAL_SESSIONS,
-  INITIAL_ARTIFACTS,
-  INITIAL_GROWTH_BRIEF,
-  CITATION_LIBRARY,
-} from './lib/demoData';
+import { ApiError, api, isUuid } from './lib/api';
+import { buildAnswerData, buildCitations, entriesFromHistory, modeToLabel } from './lib/citeInline';
+import { TOUR_ARTIFACTS, TOUR_BRIEF, TOUR_SESSIONS } from './lib/demoData';
 import { RunningHead } from './components/RunningHead';
 import { IndexRail } from './components/IndexRail';
 import { Frontmatter } from './components/Frontmatter';
@@ -33,34 +28,37 @@ import { StatesTray, StateKey } from './components/StatesTray';
 
 const COMPOSING_STAGES: Record<ComposeMode, Array<[string, string]>> = {
   research: [
-    ['consulting the archive', 'semantic + keyword · 8 passages weighed'],
+    ['consulting the archive', 'semantic + keyword · passages weighed'],
     ['drafting the entry', 'grounded in retrieved passages only'],
     ['verifying citations', 'each claim checked to its source'],
     ['binding to the session', ''],
   ],
   growth_brief: [
-    ['consulting the archive', 'semantic + keyword · 8 passages weighed'],
-    ['composing the brief', 'five sections — evidence kept apart from synthesis'],
+    ['consulting the archive', 'semantic + keyword · passages weighed'],
+    ['composing the brief', 'sections — evidence kept apart from synthesis'],
     ['verifying citations', 'each claim checked to its source'],
     ['binding the draft', ''],
   ],
   essay: [
-    ['consulting the archive', 'semantic + keyword · 8 passages weighed'],
+    ['consulting the archive', 'semantic + keyword · passages weighed'],
     ['outlining · ship 30 skill', 'hook · structure · takeaway'],
     ['drafting the essay', '≈ 1,250 words · claims grounded'],
     ['verifying citations', 'each claim checked to its source'],
   ],
   artifact: [
-    ['consulting the archive', 'semantic + keyword · 8 passages weighed'],
+    ['consulting the archive', 'semantic + keyword · passages weighed'],
     ['casting the plate', 'structured document from evidence'],
     ['checking the frame', 'sandboxed — scripts, forms, network blocked'],
-    ['filing the plate', 'first impression'],
+    ['filing the plate', ''],
   ],
 };
 
+const ORDINALS = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh'];
+const ordinal = (n: number) => ORDINALS[n - 1] || `${n}th`;
+
 export const App: React.FC = () => {
   const [view, setView] = useState<AppView>('frontmatter');
-  const [sessions, setSessions] = useState<SessionData[]>(Object.values(INITIAL_SESSIONS));
+  const [sessions, setSessions] = useState<SessionData[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeProvider, setActiveProvider] = useState<ProviderId>('local');
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -68,7 +66,7 @@ export const App: React.FC = () => {
   // Modals & Panels
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const [isBriefOpen, setIsBriefOpen] = useState(false);
-  const [activeBrief, setActiveBrief] = useState<GrowthBriefData | null>(INITIAL_GROWTH_BRIEF);
+  const [activeBrief, setActiveBrief] = useState<GrowthBriefData | null>(null);
   const [isPlateOpen, setIsPlateOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
 
@@ -76,7 +74,6 @@ export const App: React.FC = () => {
   const [isComposing, setIsComposing] = useState(false);
   const [activeMode, setActiveMode] = useState<ComposeMode>('research');
   const [composingSteps, setComposingSteps] = useState<ComposingStep[]>([]);
-  const composeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Toasts & Announcements
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -84,6 +81,8 @@ export const App: React.FC = () => {
 
   // Refs
   const sheetRef = useRef<HTMLElement>(null);
+  const streamCtlRef = useRef<{ cancel: () => void } | null>(null);
+  const lastRunRef = useRef<{ text: string; mode: ComposeMode; format: ArtifactKind } | null>(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
@@ -99,20 +98,80 @@ export const App: React.FC = () => {
     setAnnouncement(msg);
   }, []);
 
-  // Initialize Providers & Backend Health
-  useEffect(() => {
-    api.getProviders().then(setProviders);
-    api.getSessions().then((loaded) => {
-      if (loaded && loaded.length > 0) {
-        setSessions(loaded);
-      }
-    });
+  // Append a manuscript entry to a session (local UI state only).
+  const appendEntry = useCallback((sessionId: string, entry: ManuscriptEntry) => {
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === sessionId ? { ...s, entries: [...s.entries, entry], updatedAt: entry.createdAt } : s
+      )
+    );
   }, []);
+
+  // ---------------------------------------------------------------
+  // Initialize: live providers + real session list from PostgreSQL.
+  // An empty archive shows the pristine frontmatter landing view.
+  // ---------------------------------------------------------------
+  useEffect(() => {
+    api
+      .getProviders()
+      .then(setProviders)
+      .catch(() => undefined); // getProviders normalizes its own offline state
+
+    api
+      .getSessions()
+      .then((loaded) => {
+        setSessions(loaded);
+        if (loaded.length === 0) {
+          setView('frontmatter');
+        }
+      })
+      .catch((err: ApiError) => {
+        setSessions([]);
+        showToast(`The archive is unreachable — ${err.message}`);
+      });
+  }, [showToast]);
+
+  // ---------------------------------------------------------------
+  // Strike the run ("Esc" / "strike this run"): cancel the SSE reader.
+  // The backend receives the disconnect and marks the assistant
+  // message `cancelled` — no partial draft is persisted.
+  // ---------------------------------------------------------------
+  const handleStrikeRun = useCallback(() => {
+    streamCtlRef.current?.cancel();
+    streamCtlRef.current = null;
+    setIsComposing(false);
+    setComposingSteps([]);
+
+    if (activeSessionId) {
+      appendEntry(activeSessionId, {
+        id: 'struck-' + Date.now(),
+        kind: 'insufficient',
+        noticeData: {
+          kick: 'Run struck',
+          paragraphs: [
+            'Nothing was bound to this session — the partial draft was discarded, and no citation was recorded.',
+          ],
+          action: lastRunRef.current
+            ? { label: 'Recompose →', actionKey: 'prefill', prefill: lastRunRef.current.text }
+            : undefined,
+          stamp: 'struck by the reader · nothing persisted',
+        },
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    announce('Run struck — nothing was persisted.');
+    showToast('Run struck — nothing was persisted');
+  }, [activeSessionId, announce, appendEntry, showToast]);
 
   // Global Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (isComposing && !isBriefOpen && !isPlateOpen && !isMobileRailOpen) {
+          handleStrikeRun();
+          return;
+        }
         setIsBriefOpen(false);
         setIsPlateOpen(false);
         setIsMobileRailOpen(false);
@@ -133,74 +192,36 @@ export const App: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view]);
+  }, [view, isComposing, isBriefOpen, isPlateOpen, isMobileRailOpen, handleStrikeRun]);
 
-  // Session Switching
+  // ---------------------------------------------------------------
+  // Session Switching: real sessions lazily load their history.
+  // ---------------------------------------------------------------
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
       if (isComposing) {
         showToast('Composing — strike the run first');
         return;
       }
+      const target = sessions.find((s) => s.id === sessionId);
+      if (!target) return;
       setActiveSessionId(sessionId);
       setView('manuscript');
       window.scrollTo({ top: 0, behavior: 'smooth' });
 
-      // Fetch message history for live sessions if entries are empty
-      const currentSession = sessions.find((s) => s.id === sessionId);
-      if (currentSession && currentSession.entries.length === 0 && currentSession.kind === 'live') {
-        const msgs = await api.getSessionMessages(sessionId);
-        if (msgs && msgs.length > 0) {
-          const loadedEntries: ManuscriptEntry[] = msgs.map((m) => {
-            if (m.role === 'user') {
-              return {
-                id: m.id,
-                kind: 'query',
-                queryText: m.content,
-                queryMeta: {
-                  time: new Date(m.created_at).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  }),
-                },
-                createdAt: m.created_at,
-              };
-            }
-
-            const citations: Citation[] = (m.citations || []).map((c, idx) => ({
-              id: `sn-${sessionId}-${c.evidence_id}`,
-              refIndex: idx + 1,
-              speaker: c.guest || 'Lenny Guest',
-              episodeTitle: c.episode_title,
-              episodeUrl: c.episode_url || undefined,
-              quote: c.excerpt,
-              provenanceStamp: `[${c.evidence_id}] ${c.supports || 'Evidence'}`,
-              chunkId: c.chunk_id,
-            }));
-
-            return {
-              id: m.id,
-              kind: 'answer',
-              answerData: {
-                lead: m.content.split('\n\n')[0] || m.content,
-                sections: [
-                  {
-                    rn: 'I',
-                    h: 'Synthesized Evidence',
-                    bodyHtml: m.content,
-                    citedRefIndices: citations.map((c) => c.refIndex),
-                  },
-                ],
-                stamp: `Archived Entry — ${citations.length} citations verified`,
-              },
-              citations,
-              createdAt: m.created_at,
-            };
-          });
-
-          setSessions((prev) =>
-            prev.map((s) => (s.id === sessionId ? { ...s, entries: loadedEntries } : s))
-          );
+      // Real sessions: fetch persisted history on first open.
+      if (!target.isDemo && target.entries.length === 0) {
+        try {
+          const msgs = await api.getSessionMessages(sessionId);
+          const loaded = entriesFromHistory(sessionId, msgs);
+          if (loaded.length > 0) {
+            setSessions((prev) =>
+              prev.map((s) => (s.id === sessionId ? { ...s, entries: loaded } : s))
+            );
+          }
+        } catch (err) {
+          const msg = err instanceof ApiError ? err.message : 'history could not be read';
+          showToast(`Could not read this dossier — ${msg}`);
         }
       }
     },
@@ -218,187 +239,87 @@ export const App: React.FC = () => {
     if (ta) ta.focus();
   }, [isComposing, showToast]);
 
+  const handleDeleteSession = useCallback(
+    async (sessionId: string) => {
+      if (isComposing) {
+        showToast('Composing — strike the run first');
+        return;
+      }
+      const target = sessions.find((s) => s.id === sessionId);
+      if (!target) return;
+
+      // Optimistic removal from state
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+      if (sessionId === activeSessionId) {
+        handleNewDossier();
+      }
+
+      if (!target.isDemo) {
+        try {
+          await api.deleteSession(sessionId);
+          showToast('Dossier deleted');
+        } catch {
+          // Revert on failure
+          setSessions((prev) => [target, ...prev]);
+          showToast('Could not delete dossier — the archive kept it');
+        }
+      } else {
+        showToast('Dossier removed from tour');
+      }
+    },
+    [isComposing, sessions, activeSessionId, handleNewDossier, showToast]
+  );
+
+  // Optimistic rename with honest revert on failure.
   const handleTitleChange = useCallback(
     (newTitle: string) => {
       if (!activeSessionId) return;
+      const previous = sessions.find((s) => s.id === activeSessionId)?.title;
       setSessions((prev) =>
         prev.map((s) => (s.id === activeSessionId ? { ...s, title: newTitle } : s))
       );
-      api.updateSessionTitle(activeSessionId, newTitle);
-      showToast('Dossier retitled');
+      api.updateSessionTitle(activeSessionId, newTitle).then(
+        () => showToast('Dossier retitled'),
+        () => {
+          setSessions((prev) =>
+            prev.map((s) => (s.id === activeSessionId ? { ...s, title: previous || s.title } : s))
+          );
+          showToast('Retitle failed — the archive kept the old title');
+        }
+      );
     },
-    [activeSessionId, showToast]
+    [activeSessionId, sessions, showToast]
   );
 
   const handleProviderChange = useCallback(
     (newProv: ProviderId) => {
-      setActiveProvider(newProv);
       const provObj = providers.find((p) => p.id === newProv);
-      showToast(`Provider set to ${provObj?.name.toLowerCase()} — ${provObj?.model}`);
-      announce(`Provider set to ${provObj?.name}.`);
+      if (provObj && provObj.status === 'offline') {
+        showToast(
+          newProv === 'local'
+            ? 'Local Ollama is unreachable — start it, or use the cloud setting'
+            : 'The cloud provider is not configured — add its API key server-side'
+        );
+      }
+      setActiveProvider(newProv);
+      if (provObj) {
+        showToast(`Provider set to ${provObj.name.toLowerCase()} — ${provObj.model}`);
+        announce(`Provider set to ${provObj.name}.`);
+      }
     },
     [providers, showToast, announce]
   );
 
-  // Delivery Logic for Different Modes
-  const deliverResult = useCallback(
-    (session: SessionData, text: string, mode: ComposeMode, format: ArtifactKind) => {
-      const isBenchmark = /benchmark|industry average|typical (rate|conversion)|average (rate|conversion)|statistic/i.test(
-        text
-      );
-
-      if (isBenchmark) {
-        const noticeEntry: ManuscriptEntry = {
-          id: 'not-' + Date.now(),
-          kind: 'insufficient',
-          noticeData: {
-            kick: 'Not in the archive',
-            paragraphs: [
-              'I searched the episode index for product-led-growth benchmark conversion rates, and the archive can’t support a reliable answer. Guests rarely publish comparable numbers, and benchmarks vary too much by segment and definition to quote blindly — I’d rather show you the gap than invent a figure.',
-            ],
-            suggestions: [
-              'How do guests define “good” activation for self-serve B2B?',
-              'What retention curve shape do guests look for before scaling acquisition?',
-            ],
-            stamp: '0 citations · the question outran the evidence',
-          },
-          createdAt: new Date().toISOString(),
-        };
-
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === session.id
-              ? { ...s, entries: [...s.entries, noticeEntry], meta: 'query · 0 notes' }
-              : s
-          )
-        );
-        announce('Not enough evidence in the archive.');
-        return;
-      }
-
-      if (mode === 'growth_brief') {
-        setIsBriefOpen(true);
-        showToast('Growth brief drafted — first impression');
-        announce('Growth brief composed.');
-        return;
-      }
-
-      if (mode === 'artifact') {
-        const artId = format === 'html' ? 'a1' : 'a2';
-        const art = INITIAL_ARTIFACTS[artId];
-        const nextPlateSeq = session.plateSeq + 1;
-
-        const plateEntry: ManuscriptEntry = {
-          id: 'plate-entry-' + Date.now(),
-          kind: 'notice',
-          noticeData: {
-            kick: 'Plate filed',
-            paragraphs: [
-              `<strong>${art.title}</strong> is filed in the margin at right — v1, first impression. It’s examined in a sandboxed frame: scripts, forms and network are blocked, and the original source stays one click away.`,
-            ],
-            stamp: `${art.file} · sandboxed preview · first impression`,
-          },
-          artifact: art,
-          createdAt: new Date().toISOString(),
-        };
-
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === session.id
-              ? {
-                  ...s,
-                  plateSeq: nextPlateSeq,
-                  entries: [...s.entries, plateEntry],
-                  artifacts: [...s.artifacts, art],
-                }
-              : s
-          )
-        );
-        setActiveArtifact(art);
-        setIsPlateOpen(true);
-        showToast('Plate filed — v1 · sandboxed frame');
-        announce('Plate filed and open for examination.');
-        return;
-      }
-
-      // Default: Research Answer with 4 Verified Citations
-      const answerEntry: ManuscriptEntry = {
-        id: 'ans-' + Date.now(),
-        kind: 'answer',
-        answerData: {
-          lead:
-            'The pattern across the interviews is consistent: activation gains that hold up come from narrowing the first run — carrying a new user to one personally meaningful outcome, faster — not from adding steps, tours, or pressure. Retention follows the value, not the funnel.',
-          sections: [
-            {
-              rn: 'I',
-              h: 'Find the moment worth speeding toward',
-              bodyHtml:
-                'Rahul Vohra describes how Superhuman used its product-market-fit survey as a map rather than a score: profile the users who would be “very disappointed” without the product, find what they were actually doing when delight happened, then rebuild onboarding so every new user reaches that same moment sooner. The activation metric that falls out is time-to-that-behavior — not steps completed.',
-              citedRefIndices: [1],
-            },
-            {
-              rn: 'II',
-              h: 'Read the retention curve before touching the funnel',
-              bodyHtml:
-                'Casey Winters is blunt about sequencing: retention is the core of growth, and a curve that never flattens means acquisition is filling a leaking bucket. Before shipping onboarding changes, find which cohorts flatten, where the drop concentrates, and whether the users you are activating are the ones who stay.',
-              citedRefIndices: [2],
-            },
-            {
-              rn: 'III',
-              h: 'Make the first outcome the user’s own',
-              bodyHtml:
-                'Duolingo’s turnaround focused on the habit itself — a first lesson that is fast and calibrated to the learner, wrapped in a streak the learner owns. The lesson transfers: define activation as the user’s first real success — a project created, a first aha — not a checklist the product imposes.',
-              citedRefIndices: [3],
-            },
-            {
-              rn: 'IV',
-              h: 'In self-serve B2B, activation is the expansion engine',
-              bodyHtml:
-                'Elena Verna’s framing for product-led growth: the product is the funnel. Users who reach value expand their own accounts, and sales follows usage signals instead of cold outreach. That only compounds when “activated” means reached-value — not “invited five teammates.”',
-              citedRefIndices: [4],
-            },
-          ],
-          thinNotice:
-            'Guests rarely share controlled experiments that pit an activation change directly against retention. Treat the pattern above as strong expert consensus, not causal proof — and keep a retention guardrail on whatever you test.',
-          stamp: `Set in ${providers.find((p) => p.id === activeProvider)?.model || 'qwen2.5:1.5b'} · ${activeProvider} — 4 citations verified`,
-        },
-        citations: [
-          { id: `sn-${session.id}-1`, refIndex: 1, ...CITATION_LIBRARY.vohra },
-          { id: `sn-${session.id}-2`, refIndex: 2, ...CITATION_LIBRARY.winters },
-          { id: `sn-${session.id}-3`, refIndex: 3, ...CITATION_LIBRARY.mazal },
-          { id: `sn-${session.id}-4`, refIndex: 4, ...CITATION_LIBRARY.verna },
-        ],
-        createdAt: new Date().toISOString(),
-      };
-
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === session.id
-            ? {
-                ...s,
-                entries: [...s.entries, answerEntry],
-                meta: 'query · 4 notes',
-                noteSeq: s.noteSeq + 4,
-              }
-            : s
-        )
-      );
-
-      announce('Entry bound — four passages cited in the margin.');
-      showToast('Entry bound — 4 citations verified in the margin');
-      setTimeout(() => {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }, 100);
-    },
-    [activeProvider, providers, showToast, announce]
-  );
-
-  // Run Composing Pipeline via live Server-Sent Events stream
+  // ---------------------------------------------------------------
+  // Live SSE composing pipeline. On error: an honest failure notice —
+  // never a fabricated answer. On completion: entries are built from
+  // the validated message and its server-resolved citations.
+  // ---------------------------------------------------------------
   const runComposingPipeline = useCallback(
-    (session: SessionData, text: string, mode: ComposeMode, format: ArtifactKind) => {
+    (session: SessionData, text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string | null) => {
       setIsComposing(true);
       const stageDefs = COMPOSING_STAGES[mode] || COMPOSING_STAGES.research;
-
       const initialSteps: ComposingStep[] = stageDefs.map((def, idx) => ({
         label: def[0],
         detail: def[1],
@@ -415,13 +336,17 @@ export const App: React.FC = () => {
         saving: 4,
       };
 
-      api.streamMessage(
+      const modelName =
+        providers.find((p) => p.id === activeProvider)?.model || activeProvider;
+
+      streamCtlRef.current = api.streamMessage(
         session.id,
         {
           content: text,
           mode,
+          format,
           provider: activeProvider,
-          product_context: null,
+          productContext: productContext || null,
         },
         {
           onStage: (stage, label) => {
@@ -436,126 +361,117 @@ export const App: React.FC = () => {
           },
           onComplete: async (data) => {
             setComposingSteps((prev) => prev.map((s) => ({ ...s, status: 'done' })));
-
             setTimeout(async () => {
               setIsComposing(false);
+              streamCtlRef.current = null;
 
-              // Map real evidence citations
-              const citations: Citation[] = (data.citations || []).map((c, idx) => ({
-                id: `sn-${session.id}-${c.evidence_id}`,
-                refIndex: idx + 1,
-                speaker: c.guest || 'Lenny Guest',
-                episodeTitle: c.episode_title,
-                episodeUrl: c.episode_url || undefined,
-                quote: c.excerpt, // SPEC §5.6: read from stored chunk
-                provenanceStamp: `[${c.evidence_id}] ${c.supports || 'Evidence'}`,
-                chunkId: c.chunk_id,
-              }));
+              const citations = buildCitations(session.id, data.message.id, data.citations || []);
+              const stampModel = data.message.model_id || modelName;
+              const stampProvider = data.message.provider || activeProvider;
 
+              // Insufficient evidence: honest abstention, no fabrication.
               if (data.insufficient_evidence) {
-                const insufficientEntry: ManuscriptEntry = {
+                appendEntry(session.id, {
                   id: data.message.id || 'insuf-' + Date.now(),
                   kind: 'insufficient',
                   noticeData: {
-                    kick: 'Insufficient Evidence in Transcript Corpus',
+                    kick: 'Not in the archive',
                     paragraphs: [
                       data.message.content ||
                         'The podcast transcript corpus does not contain sufficient verified evidence to support this claim.',
                     ],
                     action: {
-                      label: 'Refine Query →',
-                      actionKey: 'retry',
+                      label: 'Recompose →',
+                      actionKey: 'prefill',
+                      prefill: text,
                     },
-                    stamp: `${data.message.model_id || activeProvider} · insufficient evidence`,
+                    stamp: `${stampModel} · 0 citations · the question outran the evidence`,
                   },
                   citations,
                   createdAt: new Date().toISOString(),
-                };
-                setSessions((prev) =>
-                  prev.map((s) =>
-                    s.id === session.id
-                      ? { ...s, entries: [...s.entries, insufficientEntry] }
-                      : s
-                  )
-                );
-                showToast('Insufficient evidence in corpus');
+                });
+                showToast('Not enough evidence in the archive');
+                announce('Insufficient evidence — nothing was invented.');
                 return;
               }
 
-              // Handle Growth Brief deliverable
-              if (data.growth_brief_id) {
-                const briefData = await api.getGrowthBrief(data.growth_brief_id);
-                if (briefData) {
-                  setSessions((prev) =>
-                    prev.map((s) =>
-                      s.id === session.id
-                        ? { ...s, activeBrief: briefData, briefCount: s.briefCount + 1 }
-                        : s
-                    )
-                  );
-                  setActiveBrief(briefData);
-                  setIsBriefOpen(true);
-                }
-              }
-
-              // Handle Artifact deliverable
+              // Artifact deliverable: fetch and file the plate.
               if (data.artifact_id) {
-                const artifactData = await api.getArtifact(data.artifact_id);
-                if (artifactData) {
+                try {
+                  const artifact = await api.getArtifact(data.artifact_id);
+                  const nextPlateSeq = session.plateSeq + 1;
                   setSessions((prev) =>
                     prev.map((s) =>
                       s.id === session.id
-                        ? { ...s, artifacts: [...s.artifacts, artifactData] }
+                        ? {
+                            ...s,
+                            plateSeq: nextPlateSeq,
+                            artifacts: [...s.artifacts, artifact],
+                          }
                         : s
                     )
                   );
-                  setActiveArtifact(artifactData);
+                  appendEntry(session.id, {
+                    id: 'plate-entry-' + Date.now(),
+                    kind: 'notice',
+                    noticeData: {
+                      kick: 'Plate filed',
+                      paragraphs: [
+                        `${artifact.title} is filed in the margin at right — v${artifact.version}. It’s examined in a sandboxed frame: scripts, forms and network are blocked, and the original source stays one click away.`,
+                      ],
+                      stamp: `${artifact.file} · sandboxed preview · v${artifact.version}`,
+                    },
+                    artifact,
+                    createdAt: new Date().toISOString(),
+                  });
+                  setActiveArtifact(artifact);
                   setIsPlateOpen(true);
+                  showToast(`Plate filed — v${artifact.version} · sandboxed frame`);
+                  announce('Plate filed and open for examination.');
+                } catch (err) {
+                  const msg = err instanceof ApiError ? err.message : 'the plate could not be read';
+                  showToast(`Plate was persisted but could not be opened — ${msg}`);
+                }
+                return;
+              }
+
+              // Growth brief deliverable: fetch and open the fold.
+              if (data.growth_brief_id) {
+                try {
+                  const brief = await api.getGrowthBrief(data.growth_brief_id);
+                  setSessions((prev) =>
+                    prev.map((s) =>
+                      s.id === session.id
+                        ? { ...s, activeBrief: brief, briefCount: s.briefCount + 1 }
+                        : s
+                    )
+                  );
+                  setActiveBrief(brief);
+                  setIsBriefOpen(true);
+                  showToast('Growth brief bound — first impression');
+                  announce('Growth brief composed and opened.');
+                } catch (err) {
+                  const msg = err instanceof ApiError ? err.message : 'the brief could not be read';
+                  showToast(`Brief was persisted but could not be opened — ${msg}`);
                 }
               }
 
-              // Bind real Answer Entry
-              const answerEntry: ManuscriptEntry = {
+              // Research / brief / essay answer entry.
+              const stamp = `Set in ${stampModel} · ${stampProvider} — ${citations.length} citation${
+                citations.length === 1 ? '' : 's'
+              } verified`;
+              appendEntry(session.id, {
                 id: data.message.id || 'ans-' + Date.now(),
                 kind: 'answer',
-                answerData: {
-                  lead: data.message.content.split('\n\n')[0] || data.message.content,
-                  sections: [
-                    {
-                      rn: 'I',
-                      h:
-                        mode === 'growth_brief'
-                          ? 'Growth Brief Summary'
-                          : mode === 'essay'
-                          ? 'Digital Essay'
-                          : 'Synthesized Evidence',
-                      bodyHtml: data.message.content,
-                      citedRefIndices: citations.map((c) => c.refIndex),
-                    },
-                  ],
-                  stamp: `Set in ${data.message.model_id || activeProvider} · ${data.message.provider || activeProvider} — ${citations.length} citations verified`,
-                },
+                answerData: buildAnswerData(data.message.content, stamp),
                 citations,
                 createdAt: data.message.created_at || new Date().toISOString(),
-              };
-
-              setSessions((prev) =>
-                prev.map((s) =>
-                  s.id === session.id
-                    ? {
-                        ...s,
-                        entries: [...s.entries, answerEntry],
-                        meta: `query · ${citations.length} notes`,
-                        noteSeq: s.noteSeq + citations.length,
-                      }
-                    : s
-                )
-              );
+              });
 
               announce(
-                `Entry bound — ${citations.length} citations verified in the margin.`
+                `Entry bound — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified in the margin.`
               );
-              showToast(`Entry bound — ${citations.length} citations verified`);
+              showToast(`Entry bound — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified`);
               setTimeout(() => {
                 window.scrollTo({
                   top: document.body.scrollHeight,
@@ -565,100 +481,166 @@ export const App: React.FC = () => {
             }, 300);
           },
           onError: (err) => {
-            console.warn('SSE message stream fallback:', err);
-            deliverResult(session, text, mode, format);
             setIsComposing(false);
+            streamCtlRef.current = null;
+            appendEntry(session.id, {
+              id: 'err-' + Date.now(),
+              kind: 'insufficient',
+              noticeData: {
+                kick: 'The run failed',
+                paragraphs: [err.message],
+                action: {
+                  label: 'Recompose →',
+                  actionKey: 'prefill',
+                  prefill: text,
+                },
+                stamp: `${err.code} · nothing was persisted`,
+              },
+              createdAt: new Date().toISOString(),
+            });
+            announce('The composing run failed.');
+            showToast(`The run failed — ${err.message}`);
+          },
+          onCancelled: () => {
+            // The struck-run notice is appended by handleStrikeRun.
           },
         }
       );
     },
-    [activeProvider, announce, deliverResult, showToast]
+    [activeProvider, announce, appendEntry, providers, showToast]
   );
 
-  const handleStrikeRun = useCallback(() => {
-    if (composeTimerRef.current) {
-      clearTimeout(composeTimerRef.current);
-    }
-    setIsComposing(false);
-
-    if (activeSessionId) {
-      const struckNotice: ManuscriptEntry = {
-        id: 'struck-' + Date.now(),
-        kind: 'insufficient',
-        noticeData: {
-          kick: 'Run struck',
-          paragraphs: [
-            'Nothing was bound to this session — the partial draft was discarded, and no citation was recorded.',
-          ],
-          action: {
-            label: 'Recompose →',
-            actionKey: 'retry',
-          },
-          stamp: 'struck by the reader · nothing persisted',
-        },
-        createdAt: new Date().toISOString(),
-      };
-
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSessionId ? { ...s, entries: [...s.entries, struckNotice] } : s
-        )
-      );
-    }
-
-    announce('Run struck — nothing was persisted.');
-    showToast('Run struck — nothing was persisted');
-  }, [activeSessionId, announce, showToast]);
-
-  // Submit Prompt from Frontmatter or ComposerBar
+  // ---------------------------------------------------------------
+  // Submit Prompt from Frontmatter or ComposerBar.
+  // Real interactions always hit PostgreSQL: submitting inside a design
+  // tour dossier transparently opens a fresh real dossier first.
+  // ---------------------------------------------------------------
   const handleSubmitQuery = useCallback(
-    async (
-      text: string,
-      mode: ComposeMode,
-      format: ArtifactKind,
-      productContext?: string
-    ) => {
+    async (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => {
+      lastRunRef.current = { text, mode, format };
       let currentSession = activeSession;
-      if (!currentSession) {
-        // Create new session via backend
-        const titleSnippet = text.length > 50 ? `${text.slice(0, 48)}…` : text;
-        const newSess = await api.createSession(titleSnippet, activeProvider);
-        currentSession = newSess;
-        setSessions((prev) => [newSess, ...prev]);
-        setActiveSessionId(newSess.id);
-        setView('manuscript');
+
+      try {
+        if (!currentSession) {
+          const newSess = await api.createSession(text.slice(0, 60), activeProvider);
+          setSessions((prev) => [newSess, ...prev]);
+          setActiveSessionId(newSess.id);
+          setView('manuscript');
+          currentSession = newSess;
+        } else if (currentSession.isDemo) {
+          showToast('Design tour dossier — binding to a fresh archive dossier');
+          const newSess = await api.createSession(text.slice(0, 60), activeProvider);
+          setSessions((prev) => [newSess, ...prev]);
+          setActiveSessionId(newSess.id);
+          currentSession = newSess;
+        }
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'the archive is unreachable';
+        showToast(`Could not open a dossier — ${msg}`);
+        announce('Could not open a dossier. Nothing was submitted.');
+        return;
       }
 
-      // Add query entry
-      const queryEntry: ManuscriptEntry = {
+      appendEntry(currentSession!.id, {
         id: 'q-' + Date.now(),
         kind: 'query',
         queryText: text,
         queryMeta: {
           time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-          modeLabel: mode === 'research' ? 'Query' : mode === 'growth_brief' ? 'Brief' : mode === 'essay' ? 'Essay' : 'Plate',
+          modeLabel: modeToLabel(mode),
           hasContext: !!productContext,
         },
         createdAt: new Date().toISOString(),
-      };
+      });
 
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === currentSession!.id ? { ...s, entries: [...s.entries, queryEntry] } : s
-        )
-      );
-
-      // Scroll to bottom
       setTimeout(() => {
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
       }, 50);
 
-      runComposingPipeline(currentSession, text, mode, format);
+      runComposingPipeline(currentSession!, text, mode, format, productContext);
     },
-    [activeSession, activeProvider, runComposingPipeline]
+    [activeProvider, activeSession, announce, appendEntry, runComposingPipeline, showToast]
   );
 
-  // States Tray Handler
+  // Retry the most recent real run, if there was one.
+  const handleRetryLast = useCallback(() => {
+    const last = lastRunRef.current;
+    if (last) {
+      handleSubmitQuery(last.text, last.mode, last.format);
+    }
+  }, [handleSubmitQuery]);
+
+  // ---------------------------------------------------------------
+  // Growth Brief — "Bind impression" (optimistic concurrency).
+  // ---------------------------------------------------------------
+  const handleSaveBrief = useCallback(
+    async (draft: GrowthBriefData) => {
+      // Design-tour briefs never touch the API — that's the point of the tour.
+      if (draft.isDemo || !isUuid(draft.id)) {
+        showToast('Design tour brief — compose a real brief to persist edits');
+        announce('This is a design tour brief. Nothing was sent.');
+        return;
+      }
+      try {
+        const saved = await api.saveGrowthBrief(draft);
+        setActiveBrief(saved);
+        setSessions((prev) =>
+          prev.map((s) => (s.id === saved.sessionId ? { ...s, activeBrief: saved } : s))
+        );
+        showToast(`${ordinal(saved.version)} impression bound — Version ${saved.version}`);
+        announce(`Brief saved. Version ${saved.version}.`);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          showToast('Version conflict: please reload the latest brief');
+          announce('Version conflict. Reload the latest brief.');
+        } else {
+          const msg = err instanceof ApiError ? err.message : 'the archive is unreachable';
+          showToast(`Bind failed — ${msg}`);
+        }
+      }
+    },
+    [announce, showToast]
+  );
+
+  const handleOpenBrief = useCallback(() => {
+    if (activeSession?.activeBrief) {
+      setActiveBrief(activeSession.activeBrief);
+      setIsBriefOpen(true);
+    } else {
+      showToast('No brief bound to this dossier yet — compose one with the Brief mode');
+      setActiveMode('growth_brief');
+    }
+  }, [activeSession, showToast]);
+
+  // ---------------------------------------------------------------
+  // Plates: real artifacts from the session, tour artifacts otherwise.
+  // ---------------------------------------------------------------
+  const handleExaminePlate = useCallback(
+    (artId: string) => {
+      const all = sessions.flatMap((s) => s.artifacts);
+      const art = all.find((a) => a.id === artId) || TOUR_ARTIFACTS[artId];
+      if (art) {
+        setActiveArtifact(art);
+        setIsPlateOpen(true);
+      } else {
+        showToast('That plate is no longer in the dossier');
+      }
+    },
+    [sessions, showToast]
+  );
+
+  // ---------------------------------------------------------------
+  // Design-tour state tray. Tour sessions are injected locally and
+  // clearly marked; 'insufficient' and 'composing' run REAL queries
+  // against PostgreSQL so the states are inspected live.
+  // ---------------------------------------------------------------
+  const ensureTourSession = useCallback((key: keyof typeof TOUR_SESSIONS) => {
+    setSessions((prev) => {
+      if (prev.some((s) => s.id === key)) return prev;
+      return [TOUR_SESSIONS[key], ...prev];
+    });
+  }, []);
+
   const handleSelectState = useCallback(
     (stateKey: StateKey) => {
       setIsBriefOpen(false);
@@ -670,135 +652,72 @@ export const App: React.FC = () => {
           showToast('State: Frontmatter (New Dossier)');
           break;
 
-        case 'activation': {
-          let actSession = sessions.find((s) => s.id === 'live-act');
-          if (!actSession) {
-            actSession = {
-              id: 'live-act',
-              num: '01',
-              title: 'Improving activation without hurting retention',
-              meta: 'query · 4 notes',
-              kind: 'live',
-              entries: [
-                {
-                  id: 'q-act',
-                  kind: 'query',
-                  queryText:
-                    'How can an early-stage SaaS improve activation without hurting retention?',
-                  queryMeta: {
-                    time: 'Today · 2:15 PM',
-                    modeLabel: 'Query',
-                    hasContext: true,
-                  },
-                  createdAt: new Date().toISOString(),
-                },
-                {
-                  id: 'ans-act',
-                  kind: 'answer',
-                  answerData: {
-                    lead:
-                      'The pattern across the interviews is consistent: activation gains that hold up come from narrowing the first run — carrying a new user to one personally meaningful outcome, faster — not from adding steps, tours, or pressure. Retention follows the value, not the funnel.',
-                    sections: [
-                      {
-                        rn: 'I',
-                        h: 'Find the moment worth speeding toward',
-                        bodyHtml:
-                          'Rahul Vohra describes how Superhuman used its product-market-fit survey as a map rather than a score: profile the users who would be “very disappointed” without the product, find what they were actually doing when delight happened, then rebuild onboarding so every new user reaches that same moment sooner. The activation metric that falls out is time-to-that-behavior — not steps completed.',
-                        citedRefIndices: [1],
-                      },
-                      {
-                        rn: 'II',
-                        h: 'Read the retention curve before touching the funnel',
-                        bodyHtml:
-                          'Casey Winters is blunt about sequencing: retention is the core of growth, and a curve that never flattens means acquisition is filling a leaking bucket. Before shipping onboarding changes, find which cohorts flatten, where the drop concentrates, and whether the users you are activating are the ones who stay.',
-                        citedRefIndices: [2],
-                      },
-                      {
-                        rn: 'III',
-                        h: 'Make the first outcome the user’s own',
-                        bodyHtml:
-                          'Duolingo’s turnaround focused on the habit itself — a first lesson that is fast and calibrated to the learner, wrapped in a streak the learner owns. The lesson transfers: define activation as the user’s first real success — a project created, a first aha — not a checklist the product imposes.',
-                        citedRefIndices: [3],
-                      },
-                      {
-                        rn: 'IV',
-                        h: 'In self-serve B2B, activation is the expansion engine',
-                        bodyHtml:
-                          'Elena Verna’s framing for product-led growth: the product is the funnel. Users who reach value expand their own accounts, and sales follows usage signals instead of cold outreach. That only compounds when “activated” means reached-value — not “invited five teammates.”',
-                        citedRefIndices: [4],
-                      },
-                    ],
-                    thinNotice:
-                      'Guests rarely share controlled experiments that pit an activation change directly against retention. Treat the pattern above as strong expert consensus, not causal proof — and guard retention in whatever you test.',
-                    stamp: 'Set in qwen2.5:1.5b · local — 4 citations verified',
-                  },
-                  citations: [
-                    { id: 'sn-live-act-1', refIndex: 1, ...CITATION_LIBRARY.vohra },
-                    { id: 'sn-live-act-2', refIndex: 2, ...CITATION_LIBRARY.winters },
-                    { id: 'sn-live-act-3', refIndex: 3, ...CITATION_LIBRARY.mazal },
-                    { id: 'sn-live-act-4', refIndex: 4, ...CITATION_LIBRARY.verna },
-                  ],
-                  createdAt: new Date().toISOString(),
-                },
-              ],
-              artifacts: [],
-              briefCount: 1,
-              noteSeq: 4,
-              plateSeq: 0,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            setSessions((prev) => [actSession!, ...prev]);
-          }
+        case 'activation':
+          ensureTourSession('live-act');
           setActiveSessionId('live-act');
           setView('manuscript');
-          showToast('State: Research Folio with 4 Citations & Leaders');
+          showToast('State: Research Folio — design tour · not persisted');
+          break;
+
+        case 'pricing': {
+          ensureTourSession('pricing');
+          setActiveSessionId('pricing');
+          setView('manuscript');
+          showToast('State: Pricing Folio — design tour · not persisted');
           break;
         }
 
-        case 'pricing':
-          handleSelectSession('pricing');
-          showToast('State: Pricing Folio');
-          break;
-
         case 'brief':
+          setActiveBrief(TOUR_BRIEF);
           setIsBriefOpen(true);
-          showToast('State: Growth Brief ("The Fold")');
+          showToast('State: Growth Brief (The Fold) — design tour');
           break;
 
         case 'plate-html':
-          setActiveArtifact(INITIAL_ARTIFACTS.a1);
+          setActiveArtifact(TOUR_ARTIFACTS.a1);
           setIsPlateOpen(true);
-          showToast('State: Sandboxed HTML Plate Viewer');
+          showToast('State: Sandboxed HTML Plate — design tour');
           break;
 
         case 'plate-md':
-          setActiveArtifact(INITIAL_ARTIFACTS.a2);
+          setActiveArtifact(TOUR_ARTIFACTS.a2);
           setIsPlateOpen(true);
-          showToast('State: Sandboxed Markdown Plate Viewer');
+          showToast('State: Sandboxed Markdown Plate — design tour');
           break;
 
         case 'insufficient':
+          if (isComposing) {
+            showToast('Composing — strike the run first');
+            break;
+          }
+          setView('frontmatter');
           handleSubmitQuery(
             'What’s a good benchmark conversion rate for product-led growth companies?',
             'research',
             'markdown'
           );
-          showToast('State: Insufficient Evidence Notice');
+          showToast('State: Insufficient Evidence — real run against the archive');
           break;
 
         case 'composing':
+          if (isComposing) {
+            showToast('A run is already composing');
+            break;
+          }
+          setView('frontmatter');
           handleSubmitQuery(
             'How does Superhuman measure product-market fit delight?',
             'research',
             'markdown'
           );
-          showToast('State: Composing 4-Stage Step List');
+          showToast('State: Composing 4-Stage Step List — real run');
           break;
 
         case 'empty':
-          handleSelectSession('empty1');
-          showToast('State: Blank Dossier Session');
+          ensureTourSession('empty1');
+          setActiveSessionId('empty1');
+          setView('manuscript');
+          showToast('State: Blank Folio — design tour · not persisted');
           break;
 
         case 'colophon':
@@ -807,8 +726,10 @@ export const App: React.FC = () => {
           break;
       }
     },
-    [handleNewDossier, handleSelectSession, handleSubmitQuery, sessions, showToast]
+    [ensureTourSession, handleNewDossier, handleSubmitQuery, isComposing, showToast]
   );
+
+  const composingStamp = `${providers.find((p) => p.id === activeProvider)?.model || activeProvider} · ${activeProvider} — nothing is bound until citations pass`;
 
   return (
     <>
@@ -833,6 +754,7 @@ export const App: React.FC = () => {
         sessions={sessions}
         activeSessionId={activeSessionId}
         onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
         onNewDossier={handleNewDossier}
         isMobileOpen={isMobileRailOpen}
         onCloseMobile={() => setIsMobileRailOpen(false)}
@@ -867,8 +789,9 @@ export const App: React.FC = () => {
               entries={activeSession?.entries || []}
               isComposing={isComposing}
               composingSteps={composingSteps}
+              composingStamp={composingStamp}
               onStrikeRun={handleStrikeRun}
-              onOpenBrief={() => setIsBriefOpen(true)}
+              onOpenBrief={handleOpenBrief}
               onSetEssay={(prompt) => {
                 setActiveMode('essay');
                 const ta = document.querySelector<HTMLTextAreaElement>('#ckTa');
@@ -877,13 +800,7 @@ export const App: React.FC = () => {
                   ta.focus();
                 }
               }}
-              onExaminePlate={(artId) => {
-                const art = INITIAL_ARTIFACTS[artId];
-                if (art) {
-                  setActiveArtifact(art);
-                  setIsPlateOpen(true);
-                }
-              }}
+              onExaminePlate={handleExaminePlate}
               onPrefillQuery={(prefill) => {
                 const ta = document.querySelector<HTMLTextAreaElement>('#ckTa');
                 if (ta) {
@@ -891,13 +808,7 @@ export const App: React.FC = () => {
                   ta.focus();
                 }
               }}
-              onRetryLast={() => {
-                handleSubmitQuery(
-                  'How can an early-stage SaaS improve activation without hurting retention?',
-                  'research',
-                  'markdown'
-                );
-              }}
+              onRetryLast={handleRetryLast}
             />
           )}
         </div>
@@ -917,68 +828,20 @@ export const App: React.FC = () => {
       <GrowthBriefModal
         isOpen={isBriefOpen}
         onClose={() => setIsBriefOpen(false)}
-        brief={activeBrief || INITIAL_GROWTH_BRIEF}
-        onSaveImpression={async () => {
-          if (activeBrief && activeBrief.id && activeBrief.id !== 'brief-1') {
-            try {
-              const saved = await api.updateGrowthBrief(
-                activeBrief.id,
-                {
-                  title: activeBrief.title,
-                  data: {
-                    problem: activeBrief.sections[0]?.content,
-                    recommendation: activeBrief.sections[2]?.content,
-                    assumptions: activeBrief.sections[2]?.assumptions?.split('\n') || [],
-                    experiment: {
-                      hypothesis: activeBrief.sections[3]?.experiment?.hypothesis,
-                      change: activeBrief.sections[3]?.experiment?.change,
-                      segment: activeBrief.sections[3]?.experiment?.audience,
-                      success_metric: activeBrief.sections[3]?.experiment?.primaryMetric,
-                      guardrail_metric: activeBrief.sections[3]?.experiment?.guardrails,
-                      decision_rule: activeBrief.sections[3]?.experiment?.decisionRule,
-                    },
-                  },
-                },
-                activeBrief.version
-              );
-              if (saved) {
-                setActiveBrief(saved);
-                setSessions((prev) =>
-                  prev.map((s) => (s.id === saved.sessionId ? { ...s, activeBrief: saved } : s))
-                );
-                showToast(`Second impression bound — Version ${saved.version}`);
-                announce(`Brief saved — version ${saved.version}.`);
-                return;
-              }
-            } catch (err: any) {
-              showToast(err.message || 'Failed to save impression');
-              return;
-            }
-          }
-          showToast('Second impression bound');
-          announce('Brief saved — second impression.');
-        }}
-        onJumpToCitation={(refIndex) => {
-          const sup = document.querySelector<HTMLElement>(
-            `#entries .sn-ref[data-n="${refIndex}"]`
-          );
-          if (sup?.dataset.note) {
-            const note = document.getElementById(sup.dataset.note);
-            if (note) {
-              note.scrollIntoView({ block: 'center', behavior: 'smooth' });
-              note.classList.add('flash');
-              setTimeout(() => note.classList.remove('flash'), 1400);
-            }
-          }
-        }}
+        brief={activeBrief || TOUR_BRIEF}
+        onSaveImpression={handleSaveBrief}
         onSetEssay={() => {
           setActiveMode('essay');
           showToast('Composer set to Essay');
         }}
         onCastPlate={() => {
-          setActiveArtifact(INITIAL_ARTIFACTS.a1);
-          setIsPlateOpen(true);
-          showToast('Plate cast — v1 · sandboxed frame');
+          setActiveMode('artifact');
+          const ta = document.querySelector<HTMLTextAreaElement>('#ckTa');
+          if (ta) {
+            ta.value = `Cast an HTML one-pager experiment brief from this growth brief: “${activeBrief?.title || 'the brief'}”.`;
+            ta.focus();
+          }
+          showToast('Composer set to Plate — describe the plate and bind');
         }}
       />
 
@@ -995,10 +858,7 @@ export const App: React.FC = () => {
               ? document.querySelector<HTMLTextAreaElement>('#fmTa')
               : document.querySelector<HTMLTextAreaElement>('#ckTa');
           if (ta) {
-            ta.value =
-              art.kind === 'html'
-                ? 'Revise the one-pager: sharpen the decision rule and add guardrail thresholds.'
-                : 'Revise the memo: tighten the “where the evidence is thin” section.';
+            ta.value = `Revise the plate “${art.title}” — sharpen its decision rule and keep every claim grounded.`;
             ta.focus();
           }
           showToast('Composer set to Plate');

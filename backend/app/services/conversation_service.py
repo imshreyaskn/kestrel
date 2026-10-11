@@ -12,7 +12,7 @@ import asyncio
 import datetime
 import logging
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -215,6 +215,28 @@ class ConversationService:
             )
         return final_result
 
+    @staticmethod
+    async def _run_cancellable(
+        coro: Any,
+        is_disconnected: Callable[[], Awaitable[bool]] | None = None,
+    ) -> Any:
+        if is_disconnected is None:
+            return await coro
+        task = asyncio.create_task(coro)
+        try:
+            while not task.done():
+                done, _ = await asyncio.wait([task], timeout=0.3)
+                if done:
+                    return task.result()
+                if await is_disconnected():
+                    task.cancel()
+                    raise asyncio.CancelledError()
+            return task.result()
+        except asyncio.CancelledError:
+            if not task.done():
+                task.cancel()
+            raise
+
     async def process_message_stream(
         self,
         db: AsyncSession,
@@ -227,6 +249,7 @@ class ConversationService:
         model_id: str | None = None,
         product_context: str | None = None,
         request_id: str | None = None,
+        is_disconnected: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Execute conversation pipeline yielding structured Server-Sent Events:
@@ -404,18 +427,21 @@ class ConversationService:
                 )
 
                 # Call internal Agent Gateway
-                gw_result = await self.gateway_client.generate(
-                    session_id=str(session_id),
-                    current_user_message=content,
-                    mode=mode,
-                    provider=provider,
-                    cloud_provider=effective_cloud_provider,
-                    model_id=effective_model_id,
-                    conversation_context=conversation_context,
-                    evidence=evidence_items,
-                    product_context=product_context,
-                    request_id=run_id,
-                    system_prompt=system_prompt,
+                gw_result = await self._run_cancellable(
+                    self.gateway_client.generate(
+                        session_id=str(session_id),
+                        current_user_message=content,
+                        mode=mode,
+                        provider=provider,
+                        cloud_provider=effective_cloud_provider,
+                        model_id=effective_model_id,
+                        conversation_context=conversation_context,
+                        evidence=evidence_items,
+                        product_context=product_context,
+                        request_id=run_id,
+                        system_prompt=system_prompt,
+                    ),
+                    is_disconnected=is_disconnected,
                 )
 
                 yield {
@@ -455,18 +481,21 @@ class ConversationService:
                         product_context=product_context,
                         validation_error=str(first_error),
                     )
-                    gw_result = await self.gateway_client.generate(
-                        session_id=str(session_id),
-                        current_user_message=content,
-                        mode=mode,
-                        provider=provider,
-                        cloud_provider=effective_cloud_provider,
-                        model_id=effective_model_id,
-                        conversation_context=conversation_context,
-                        evidence=evidence_items,
-                        product_context=product_context,
-                        request_id=run_id,
-                        system_prompt=repair_prompt,
+                    gw_result = await self._run_cancellable(
+                        self.gateway_client.generate(
+                            session_id=str(session_id),
+                            current_user_message=content,
+                            mode=mode,
+                            provider=provider,
+                            cloud_provider=effective_cloud_provider,
+                            model_id=effective_model_id,
+                            conversation_context=conversation_context,
+                            evidence=evidence_items,
+                            product_context=product_context,
+                            request_id=run_id,
+                            system_prompt=repair_prompt,
+                        ),
+                        is_disconnected=is_disconnected,
                     )
                     validated_any = validate_agent_response(
                         raw_response_text=gw_result.raw_response,

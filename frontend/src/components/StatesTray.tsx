@@ -43,7 +43,7 @@ export const StatesTray: React.FC<StatesTrayProps> = ({ onSelectState }) => {
         id="statesBtn"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        title="Preview key UI/UX states"
+        title="Design tour — preview key UI/UX states (tour fixtures are never persisted; live states run real archive queries)"
         onClick={(e) => {
           e.stopPropagation();
           setIsOpen(!isOpen);
@@ -57,15 +57,21 @@ export const StatesTray: React.FC<StatesTrayProps> = ({ onSelectState }) => {
         >
           <path d="M6 0 12 6 6 12 0 6Z" fill="currentColor" />
         </svg>
-        <span>UI States Tray</span>
+        <span>UI States Tray — design tour</span>
       </button>
 
       <div
         className={`states-menu ${isOpen ? 'open' : ''}`}
         id="statesMenu"
         role="dialog"
-        aria-label="Quick State Switcher"
+        aria-label="Design tour state switcher"
       >
+        <p
+          className="stamp"
+          style={{ margin: '0 14px 8px', display: 'block', fontSize: '10px' }}
+        >
+          design tour — fixtures are never persisted · live states run real queries
+        </p>
         <button
           type="button"
           className="st-opt"

@@ -201,7 +201,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
             it asks you first.
           </p>
           <p className="stamp colo-sync">
-            Episode index synced 2h ago · upstream commit 8f3c21c
+            transcript archive · every citation maps to a stored chunk
           </p>
         </div>
       </div>

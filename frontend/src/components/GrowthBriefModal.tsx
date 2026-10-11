@@ -1,19 +1,55 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { GrowthBriefData } from '../types';
 
 interface GrowthBriefModalProps {
   isOpen: boolean;
   onClose: () => void;
   brief: GrowthBriefData;
-  onSaveImpression: () => void;
-  onJumpToCitation: (refIndex: number) => void;
+  /** Receives the locally-edited draft; the caller persists it with
+   *  expected_version and handles 200 vs 409. */
+  onSaveImpression: (draft: GrowthBriefData) => void | Promise<void>;
   onSetEssay: () => void;
   onCastPlate: () => void;
 }
 
 const getOrdinalImpression = (n: number) => {
-  const ordinals = ['First', 'Second', 'Third', 'Fourth', 'Fifth'];
+  const ordinals = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh'];
   return ordinals[n - 1] || `${n}th`;
+};
+
+/**
+ * Editable block with real two-way binding. React never re-renders the
+ * contentEditable children while the user types: external values are pushed
+ * into the DOM imperatively only when they genuinely differ from the current
+ * text, so the caret position survives every keystroke.
+ */
+const EdBlock: React.FC<{
+  value: string;
+  onInput: (next: string) => void;
+  ariaLabel: string;
+}> = ({ value, onInput, ariaLabel }) => {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current && ref.current.textContent !== value) {
+      ref.current.textContent = value;
+    }
+  }, [value]);
+
+  return (
+    <div
+      ref={ref}
+      className="ed"
+      contentEditable
+      role="textbox"
+      aria-multiline="true"
+      aria-label={ariaLabel}
+      tabIndex={0}
+      suppressContentEditableWarning
+      spellCheck={false}
+      onInput={(e) => onInput(e.currentTarget.textContent || '')}
+    />
+  );
 };
 
 export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
@@ -21,12 +57,18 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
   onClose,
   brief,
   onSaveImpression,
-  onJumpToCitation,
   onSetEssay,
   onCastPlate,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const returnBtnRef = useRef<HTMLButtonElement>(null);
+  // Local draft: the two-way binding source of truth. Synced from the brief
+  // prop whenever a different brief (or a freshly saved version) arrives.
+  const [draft, setDraft] = useState<GrowthBriefData>(brief);
+
+  useEffect(() => {
+    setDraft(brief);
+  }, [brief.id, brief.version, brief.updatedAt]);
 
   useEffect(() => {
     if (isOpen && returnBtnRef.current) {
@@ -68,6 +110,13 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
 
   if (!isOpen) return null;
 
+  const set = <K extends keyof GrowthBriefData>(key: K, value: GrowthBriefData[K]) => {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  };
+  const setExperiment = (key: keyof GrowthBriefData['experiment'], value: string) => {
+    setDraft((prev) => ({ ...prev, experiment: { ...prev.experiment, [key]: value } }));
+  };
+
   return (
     <div
       ref={modalRef}
@@ -90,13 +139,13 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
         </button>
         <span className="fold-spacer" />
         <span className="imp-chip" id="impChip">
-          {getOrdinalImpression(brief.impressionsCount)} impression
+          {brief.isDemo ? 'design tour' : `${getOrdinalImpression(brief.version)} impression`}
         </span>
         <button
           type="button"
           className="tbtn solid"
           id="foldSave"
-          onClick={onSaveImpression}
+          onClick={() => onSaveImpression(draft)}
         >
           Bind impression
         </button>
@@ -104,10 +153,15 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
 
       <div className="fold-doc">
         <p className="sc kick">Kestrel · Growth Brief</p>
-        <h1 id="foldH">{brief.title}</h1>
-        <p className="fold-sub">{brief.sub}</p>
+        <h1 id="foldH">{draft.title}</h1>
+        <p className="fold-sub">
+          A structured deliverable drafted from the dossier’s research — sections are editable,
+          so click any paragraph and revise it.
+        </p>
         <p className="stamp fold-meta" id="foldMeta">
-          Drafted from query 1 · 4 passages cited · editable draft
+          {brief.isDemo
+            ? 'design tour fixture · not persisted'
+            : `Version ${draft.version} · ${draft.status} · editable draft`}
         </p>
 
         {/* Section I: Problem */}
@@ -117,15 +171,11 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
             <h2>
               Problem <span className="plabel">User context</span>
             </h2>
-            <div
-              className="ed"
-              contentEditable
-              suppressContentEditableWarning
-              spellCheck="false"
-            >
-              {brief.sections[0]?.content ||
-                'Flowstate is a seed-stage B2B task manager with self-serve sign-up — roughly 400 trials a month. Sign-ups are steady, but only about 23% of new workspaces complete a first project within seven days, and week-4 retention tracks that first project almost perfectly. Goal: raise week-one activation without degrading retention or support load.'}
-            </div>
+            <EdBlock
+              value={draft.problem}
+              ariaLabel="Problem statement"
+              onInput={(v) => set('problem', v)}
+            />
           </div>
         </section>
 
@@ -134,58 +184,36 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
           <div className="fs-num">II.</div>
           <div>
             <h2>
-              Research &amp; evidence <span className="plabel ev">Transcript evidence</span>
+              Research & evidence <span className="plabel ev">Transcript evidence</span>
             </h2>
-            <ul className="fs-ev">
-              {brief.sections[1]?.evidenceItems?.map((item) => (
-                <li key={item.refIndex}>
-                  {item.text}
-                  <button
-                    type="button"
-                    className="fref"
-                    data-n={item.refIndex}
-                    aria-label={`Show margin note ${item.refIndex}`}
-                    onClick={() => {
-                      onClose();
-                      onJumpToCitation(item.refIndex);
-                    }}
-                  >
-                    {item.refIndex}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <EdBlock
+              value={draft.researchSummary}
+              ariaLabel="Research summary"
+              onInput={(v) => set('researchSummary', v)}
+            />
           </div>
         </section>
 
-        {/* Section III: Recommendation */}
+        {/* Section III: Recommendation + assumptions */}
         <section className="fs">
           <div className="fs-num">III.</div>
           <div>
             <h2>
               Recommendation <span className="plabel sy">Assistant synthesis</span>
             </h2>
-            <div
-              className="ed"
-              contentEditable
-              suppressContentEditableWarning
-              spellCheck="false"
-            >
-              {brief.sections[2]?.content ||
-                'Rebuild first-run around a single outcome — a real first project completed in the first session — by replacing the setup checklist with a guided template gallery, and instrument time-to-first-project as the activation metric. Watch the retention curve by cohort; any loss of flattening is a stop signal.'}
-            </div>
+            <EdBlock
+              value={draft.recommendation}
+              ariaLabel="Recommendation"
+              onInput={(v) => set('recommendation', v)}
+            />
             <p className="fs-note" style={{ marginTop: '14px' }}>
-              Assumptions &amp; limitations
+              Assumptions & limitations
             </p>
-            <div
-              className="ed"
-              contentEditable
-              suppressContentEditableWarning
-              spellCheck="false"
-            >
-              {brief.sections[2]?.assumptions ||
-                'Assumes templates meaningfully cut blank-page time, and that the signup-to-first-project drop is exploration friction rather than weak intent. The archive offers expert pattern, not causal proof for this product — see the experiment below.'}
-            </div>
+            <EdBlock
+              value={draft.assumptions}
+              ariaLabel="Assumptions and limitations"
+              onInput={(v) => set('assumptions', v)}
+            />
           </div>
         </section>
 
@@ -198,97 +226,87 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
               <div className="frow">
                 <dt>Hypothesis</dt>
                 <dd>
-                  <div
-                    className="ed"
-                    contentEditable
-                    suppressContentEditableWarning
-                    spellCheck="false"
-                  >
-                    {brief.sections[3]?.experiment?.hypothesis ||
-                      'New workspaces that start from a guided template complete a first project within 7 days more often than those given a blank canvas.'}
-                  </div>
+                  <EdBlock
+                    value={draft.experiment.hypothesis}
+                    ariaLabel="Experiment hypothesis"
+                    onInput={(v) => setExperiment('hypothesis', v)}
+                  />
                 </dd>
               </div>
               <div className="frow">
                 <dt>Change</dt>
                 <dd>
-                  <div
-                    className="ed"
-                    contentEditable
-                    suppressContentEditableWarning
-                    spellCheck="false"
-                  >
-                    {brief.sections[3]?.experiment?.change ||
-                      'Replace the post-signup checklist with a template gallery step; defer all other setup until the first project exists.'}
-                  </div>
+                  <EdBlock
+                    value={draft.experiment.change}
+                    ariaLabel="Proposed change"
+                    onInput={(v) => setExperiment('change', v)}
+                  />
                 </dd>
               </div>
               <div className="frow">
                 <dt>Audience</dt>
                 <dd>
-                  <div
-                    className="ed"
-                    contentEditable
-                    suppressContentEditableWarning
-                    spellCheck="false"
-                  >
-                    {brief.sections[3]?.experiment?.audience ||
-                      'New self-serve workspaces, 50 / 50 split, two weeks of signups.'}
-                  </div>
+                  <EdBlock
+                    value={draft.experiment.segment}
+                    ariaLabel="Experiment audience"
+                    onInput={(v) => setExperiment('segment', v)}
+                  />
                 </dd>
               </div>
               <div className="frow">
                 <dt>Primary metric</dt>
                 <dd>
-                  <div
-                    className="ed"
-                    contentEditable
-                    suppressContentEditableWarning
-                    spellCheck="false"
-                  >
-                    {brief.sections[3]?.experiment?.primaryMetric ||
-                      '% of new workspaces completing a first project within 7 days — baseline ≈ 23% (user-supplied).'}
-                  </div>
+                  <EdBlock
+                    value={draft.experiment.success_metric}
+                    ariaLabel="Primary success metric"
+                    onInput={(v) => setExperiment('success_metric', v)}
+                  />
                 </dd>
               </div>
               <div className="frow">
                 <dt>Guardrails</dt>
                 <dd>
-                  <div
-                    className="ed"
-                    contentEditable
-                    suppressContentEditableWarning
-                    spellCheck="false"
-                  >
-                    {brief.sections[3]?.experiment?.guardrails ||
-                      'Week-4 retention by cohort · support contacts per signup.'}
-                  </div>
+                  <EdBlock
+                    value={draft.experiment.guardrail_metric}
+                    ariaLabel="Guardrail metrics"
+                    onInput={(v) => setExperiment('guardrail_metric', v)}
+                  />
                 </dd>
               </div>
               <div className="frow">
                 <dt>Decision rule</dt>
                 <dd>
-                  <div
-                    className="ed"
-                    contentEditable
-                    suppressContentEditableWarning
-                    spellCheck="false"
-                  >
-                    {brief.sections[3]?.experiment?.decisionRule ||
-                      'Ship at ≥ +5 points absolute with no guardrail regression; iterate between 0 and 5; revert if retention drops.'}
-                  </div>
+                  <EdBlock
+                    value={draft.experiment.decision_rule}
+                    ariaLabel="Decision rule"
+                    onInput={(v) => setExperiment('decision_rule', v)}
+                  />
                 </dd>
               </div>
             </dl>
           </div>
         </section>
 
-        {/* Section V: Next deliverable */}
+        {/* Section V: Risks & next deliverable */}
         <section className="fs">
           <div className="fs-num">V.</div>
           <div>
-            <h2>Next deliverable</h2>
-            <p className="fs-note">
+            <h2>Risks & next deliverable</h2>
+            <p className="fs-note">Risks — one per line</p>
+            <EdBlock
+              value={draft.risks}
+              ariaLabel="Risks, one per line"
+              onInput={(v) => set('risks', v)}
+            />
+            <p className="fs-note" style={{ marginTop: '14px' }}>
+              Next deliverable
+            </p>
+            <EdBlock
+              value={draft.nextDeliverable}
+              ariaLabel="Next deliverable"
+              onInput={(v) => set('nextDeliverable', v)}
+            />
+            <p className="fs-note" style={{ marginTop: '14px' }}>
               Whatever you set next inherits this brief’s citations — nothing carries over
               unsourced.
             </p>

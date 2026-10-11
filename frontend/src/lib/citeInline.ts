@@ -1,0 +1,231 @@
+/**
+ * Citation inlining & manuscript entry construction.
+ *
+ * The backend's validated answers reference request-scoped evidence labels
+ * ([E1], [E2]…) inline. This module:
+ * - maps backend citation records to margin-note citations with unique DOM ids
+ *   (`sn-{sessionId}-{messageId}-{evidenceId}` per the mission contract);
+ * - segments answer text so the manuscript renderer can replace [E1]/[1]
+ *   markers with interactive .sn-ref buttons;
+ * - splits model answers into a lead paragraph + roman-numeral sections.
+ */
+
+import { Citation, ManuscriptEntry } from '../types';
+import { CitationRecord, MessageRecord } from './api';
+
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+
+export function buildCitations(
+  sessionId: string,
+  messageId: string,
+  records: CitationRecord[]
+): Citation[] {
+  return (records || []).map((c, idx) => ({
+    id: `sn-${sessionId}-${messageId}-${c.evidence_id}`,
+    refIndex: idx + 1,
+    speaker: c.guest || 'Lenny’s Podcast guest',
+    episodeTitle: c.episode_title,
+    episodeUrl: c.episode_url || undefined,
+    quote: c.excerpt, // verbatim, read from the stored transcript chunk
+    provenanceStamp: `[${c.evidence_id}] ${c.supports || 'supporting passage'}`,
+    chunkId: c.chunk_id,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Text segmentation: [E1] / [1] markers -> citation references
+// ---------------------------------------------------------------------------
+export type TextSegment = string | { refIndex: number; evidenceId: string };
+
+const MARKER_RE = /\[(E\d+|\d+)\]/g;
+
+/**
+ * Split a text run around citation markers. `E{n}` markers resolve by
+ * evidence_id; plain `[n]` markers resolve by display refIndex. Unknown
+ * markers stay as literal text (server-validated answers should never
+ * produce them, but we never silently drop content).
+ */
+export function segmentTextWithCitations(text: string, citations: Citation[]): TextSegment[] {
+  const segments: TextSegment[] = [];
+  let lastIndex = 0;
+  MARKER_RE.lastIndex = 0;
+
+  const pushText = (str: string) => {
+    if (!str) return;
+    if (segments.length > 0 && typeof segments[segments.length - 1] === 'string') {
+      segments[segments.length - 1] += str;
+    } else {
+      segments.push(str);
+    }
+  };
+
+  let match: RegExpExecArray | null;
+  while ((match = MARKER_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      pushText(text.substring(lastIndex, match.index));
+    }
+    const token = match[1];
+    const cit = token.startsWith('E')
+      ? citations.find((c) => c.provenanceStamp.startsWith(`[${token}]`))
+      : citations.find((c) => c.refIndex === Number(token));
+
+    if (cit) {
+      segments.push({ refIndex: cit.refIndex, evidenceId: token });
+    } else {
+      pushText(match[0]);
+    }
+    lastIndex = MARKER_RE.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    pushText(text.substring(lastIndex));
+  }
+  return segments.length > 0 ? segments : [text];
+}
+
+// ---------------------------------------------------------------------------
+// Answer content -> editorial sections
+// ---------------------------------------------------------------------------
+type AnswerData = NonNullable<ManuscriptEntry['answerData']>;
+
+export function buildAnswerData(content: string, stamp: string): AnswerData {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const leadLines: string[] = [];
+  const sections: AnswerData['sections'] = [];
+  let currentParagraphs: string[] = [];
+  let paragraphLines: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length > 0) {
+      currentParagraphs.push(paragraphLines.join(' '));
+      paragraphLines = [];
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    const isSectionHeading =
+      (sections.length > 0 && /^#{1,4}\s+/.test(line)) ||
+      /^#{2,4}\s+/.test(line);
+
+    if (isSectionHeading) {
+      flushParagraph();
+      currentParagraphs = [];
+      const headingText = line.replace(/^#{1,4}\s+/, '').replace(/[*_`]/g, '');
+      const rnMatch = headingText.match(/^([IVXLCDM]+)\.\s*(.*)$/i);
+      const rn = rnMatch ? rnMatch[1].toUpperCase() : (ROMAN[sections.length] ?? '§');
+      const h = rnMatch ? rnMatch[2] : headingText;
+
+      sections.push({
+        rn,
+        h,
+        paragraphs: currentParagraphs,
+      });
+      continue;
+    }
+
+    if (!line) {
+      flushParagraph();
+      continue;
+    }
+
+    // Before any section heading: everything belongs to the lead block.
+    if (sections.length === 0) {
+      leadLines.push(line.replace(/^#\s*/, ''));
+      continue;
+    }
+
+    paragraphLines.push(line);
+  }
+  flushParagraph();
+
+  const titled: AnswerData['sections'] = sections.filter((s) => s.h || s.paragraphs.length > 0);
+  titled.forEach((sec, idx) => {
+    if (!sec.rn) sec.rn = ROMAN[idx] ?? '§';
+  });
+
+  const lead = leadLines.join(' ');
+  return {
+    lead,
+    sections: titled,
+    stamp,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Message history -> manuscript entries
+// ---------------------------------------------------------------------------
+export function entriesFromHistory(sessionId: string, messages: MessageRecord[]): ManuscriptEntry[] {
+  const entries: ManuscriptEntry[] = [];
+
+  for (const m of messages) {
+    const time = new Date(m.created_at).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const modeLabel = modeToLabel(m.workflow_mode);
+
+    if (m.role === 'user') {
+      entries.push({
+        id: m.id,
+        kind: 'query',
+        queryText: m.content,
+        queryMeta: { time, modeLabel },
+        createdAt: m.created_at,
+      });
+      continue;
+    }
+
+    if (m.status === 'cancelled') {
+      // Struck runs are never persisted as answers; nothing to show.
+      continue;
+    }
+
+    if (m.status === 'failed') {
+      entries.push({
+        id: m.id,
+        kind: 'insufficient',
+        noticeData: {
+          kick: 'A previous run failed',
+          paragraphs: [
+            m.content ||
+              'This run failed before it could be bound. Nothing unsourced was kept.',
+          ],
+          stamp: `${m.error_code || 'GENERATION_FAILED'} · ${m.model_id || m.provider || ''}`,
+        },
+        createdAt: m.created_at,
+      });
+      continue;
+    }
+
+    if (m.status !== 'complete' || !m.content) continue;
+
+    const citations = buildCitations(sessionId, m.id, m.citations || []);
+    const stamp = `Set in ${m.model_id || m.provider || 'the archive'} · ${
+      m.provider || ''
+    } — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified`;
+    entries.push({
+      id: m.id,
+      kind: 'answer',
+      answerData: buildAnswerData(m.content, stamp),
+      citations,
+      createdAt: m.created_at,
+    });
+  }
+
+  return entries;
+}
+
+export function modeToLabel(mode?: string | null): string {
+  switch (mode) {
+    case 'growth_brief':
+      return 'Brief';
+    case 'essay':
+      return 'Essay';
+    case 'artifact_markdown':
+    case 'artifact_html':
+      return 'Plate';
+    default:
+      return 'Query';
+  }
+}

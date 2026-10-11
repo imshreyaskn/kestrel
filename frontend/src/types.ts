@@ -20,14 +20,17 @@ export interface ProviderConfig {
 }
 
 export interface Citation {
-  id: string; // e.g. 'sn-1' or UUID
-  refIndex: number; // sequential number 1, 2, 3...
+  // DOM anchor id: `sn-{sessionId}-{messageId}-{evidenceId}` — unique across
+  // the whole manuscript so leader lines and getElementById stay unambiguous
+  // even when several answers in one session reuse evidence label E1.
+  id: string;
+  refIndex: number; // sequential display number 1, 2, 3...
   speaker: string;
   affiliation?: string;
   episodeTitle: string;
   episodeUrl?: string;
-  quote: string;
-  provenanceStamp: string; // e.g. "Chunk 142 · rank №1 · semantic 0.61"
+  quote: string; // verbatim excerpt read from the stored transcript chunk
+  provenanceStamp: string; // e.g. "[E1] supporting passage"
   chunkId?: string;
 }
 
@@ -43,35 +46,37 @@ export interface ArtifactData {
   createdAt?: string;
 }
 
-export interface GrowthBriefSection {
-  num: string; // "I.", "II.", etc.
-  title: string;
-  badge?: string;
-  badgeType?: 'user' | 'evidence' | 'synthesis';
-  content?: string;
-  evidenceItems?: Array<{
-    text: string;
-    refIndex: number;
-  }>;
-  assumptions?: string;
-  experiment?: {
-    hypothesis: string;
-    change: string;
-    audience: string;
-    primaryMetric: string;
-    guardrails: string;
-    decisionRule: string;
-  };
+export interface GrowthBriefExperiment {
+  // Field names mirror the backend contract exactly (SPEC §5.7 / §8.3):
+  // hypothesis, change, segment (audience), success_metric (primary metric),
+  // guardrail_metric, decision_rule.
+  hypothesis: string;
+  change: string;
+  segment: string;
+  success_metric: string;
+  guardrail_metric: string;
+  decision_rule: string;
 }
 
 export interface GrowthBriefData {
   id: string;
   sessionId: string;
   title: string;
-  sub: string;
   version: number;
-  impressionsCount: number;
-  sections: GrowthBriefSection[];
+  status: string;
+  productContext: string | null;
+  // The 7 bound sections (mission contract): problem, research_summary,
+  // recommendation, assumptions, experiment, risks, next_deliverable.
+  problem: string;
+  researchSummary: string;
+  recommendation: string;
+  assumptions: string; // newline-joined list, editable as prose
+  experiment: GrowthBriefExperiment;
+  risks: string; // newline-joined list
+  nextDeliverable: string;
+  isDemo?: boolean; // design-tour brief: never sent to the API
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ComposingStep {
@@ -96,8 +101,7 @@ export interface ManuscriptEntry {
     sections: Array<{
       rn: string;
       h: string;
-      bodyHtml: string;
-      citedRefIndices: number[];
+      paragraphs: string[];
     }>;
     thinNotice?: string;
     stamp: string;
@@ -109,6 +113,7 @@ export interface ManuscriptEntry {
     action?: {
       label: string;
       actionKey: string;
+      prefill?: string;
     };
     stamp?: string;
   };
@@ -122,7 +127,8 @@ export interface SessionData {
   num: string; // "01", "02"
   title: string;
   meta: string;
-  kind: 'live' | 'pricing' | 'empty';
+  kind: 'live' | 'demo'; // 'demo' = design-tour fixture, never persisted
+  isDemo?: boolean;
   entries: ManuscriptEntry[];
   artifacts: ArtifactData[];
   briefCount: number;
@@ -149,12 +155,13 @@ export interface SystemConfigResponse {
 }
 
 export interface HealthReadyResponse {
-  status: 'ready' | 'degraded' | 'unhealthy';
+  status: 'ready' | 'not_ready';
   components: {
-    database: string;
-    ollama: string;
-    agent_gateway: string;
+    database: { status: string; type?: string; error?: string };
+    ollama: { status: string; version?: string; code?: number };
+    agent_gateway: { status: string; code?: number };
   };
+  timestamp: number;
 }
 
 export interface ToastMessage {

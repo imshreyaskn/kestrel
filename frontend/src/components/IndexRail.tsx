@@ -5,6 +5,7 @@ interface IndexRailProps {
   sessions: SessionData[];
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
   onNewDossier: () => void;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
@@ -14,12 +15,13 @@ export const IndexRail: React.FC<IndexRailProps> = ({
   sessions,
   activeSessionId,
   onSelectSession,
+  onDeleteSession,
   onNewDossier,
   isMobileOpen,
   onCloseMobile,
 }) => {
   const openNow = sessions.filter((s) => s.kind === 'live');
-  const earlier = sessions.filter((s) => s.kind !== 'live');
+  const earlier = sessions.filter((s) => s.kind === 'demo');
 
   return (
     <>
@@ -51,18 +53,30 @@ export const IndexRail: React.FC<IndexRailProps> = ({
               {openNow.map((s) => {
                 const isActive = s.id === activeSessionId;
                 return (
-                  <button
-                    key={s.id}
-                    className={`rl-item ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                      onSelectSession(s.id);
-                      onCloseMobile();
-                    }}
-                  >
-                    <span className="rl-num">{s.num}</span>
-                    <span className="rl-t">{s.title}</span>
-                    <span className="rl-m">{s.meta}</span>
-                  </button>
+                  <div className={`rl-item-wrap ${isActive ? 'active' : ''}`} key={s.id}>
+                    <button
+                      className={`rl-item ${isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        onSelectSession(s.id);
+                        onCloseMobile();
+                      }}
+                    >
+                      <span className="rl-num">{s.num}</span>
+                      <span className="rl-t">{s.title}</span>
+                      <span className="rl-m">{s.meta}</span>
+                    </button>
+                    <button
+                      className="rl-del"
+                      aria-label={`Delete dossier “${s.title}”`}
+                      title="Delete this dossier and everything bound to it"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSession(s.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 );
               })}
             </>
@@ -70,22 +84,23 @@ export const IndexRail: React.FC<IndexRailProps> = ({
 
           {earlier.length > 0 && (
             <>
-              <p className="rl-group">Earlier</p>
+              <p className="rl-group">Design tour — not persisted</p>
               {earlier.map((s) => {
                 const isActive = s.id === activeSessionId;
                 return (
-                  <button
-                    key={s.id}
-                    className={`rl-item ${isActive ? 'active' : ''}`}
-                    onClick={() => {
-                      onSelectSession(s.id);
-                      onCloseMobile();
-                    }}
-                  >
-                    <span className="rl-num">{s.num}</span>
-                    <span className="rl-t">{s.title}</span>
-                    <span className="rl-m">{s.meta}</span>
-                  </button>
+                  <div className={`rl-item-wrap ${isActive ? 'active' : ''}`} key={s.id}>
+                    <button
+                      className={`rl-item ${isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        onSelectSession(s.id);
+                        onCloseMobile();
+                      }}
+                    >
+                      <span className="rl-num">{s.num}</span>
+                      <span className="rl-t">{s.title}</span>
+                      <span className="rl-m">{s.meta}</span>
+                    </button>
+                  </div>
                 );
               })}
             </>

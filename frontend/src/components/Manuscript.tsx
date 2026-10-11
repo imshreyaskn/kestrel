@@ -1,5 +1,6 @@
 import React from 'react';
-import { ComposingStep, ManuscriptEntry } from '../types';
+import { Citation, ComposingStep, ManuscriptEntry } from '../types';
+import { segmentTextWithCitations } from '../lib/citeInline';
 import { SideNote } from './SideNote';
 import { PlateAside } from './PlateAside';
 
@@ -7,6 +8,7 @@ interface ManuscriptProps {
   entries: ManuscriptEntry[];
   isComposing: boolean;
   composingSteps: ComposingStep[];
+  composingStamp: string;
   onStrikeRun: () => void;
   onOpenBrief: () => void;
   onSetEssay: (prompt: string) => void;
@@ -15,10 +17,62 @@ interface ManuscriptProps {
   onRetryLast: () => void;
 }
 
+/**
+ * Render a text run with inline citation markers ([E1]/[1]) replaced by
+ * interactive .sn-ref buttons, plus minimal editorial emphasis (bold/italic).
+ * Everything is emitted as text nodes — model output is never injected as
+ * raw HTML (SPEC §9.2).
+ */
+const RichText: React.FC<{ text: string; citations?: Citation[] }> = ({ text, citations }) => {
+  if (!citations || citations.length === 0) {
+    return <>{renderEmphasis(text)}</>;
+  }
+  const segments = segmentTextWithCitations(text, citations);
+  return (
+    <>
+      {segments.map((seg, i) => {
+        if (typeof seg === 'string') {
+          return <React.Fragment key={i}>{renderEmphasis(seg)}</React.Fragment>;
+        }
+        const cit = citations.find((c) => c.refIndex === seg.refIndex);
+        if (!cit) return <React.Fragment key={i}>[{seg.evidenceId}]</React.Fragment>;
+        return (
+          <button
+            key={i}
+            type="button"
+            className="sn-ref"
+            data-note={cit.id}
+            data-n={cit.refIndex}
+            aria-label={`Read evidence note ${cit.refIndex}`}
+          >
+            {cit.refIndex}
+          </button>
+        );
+      })}
+    </>
+  );
+};
+
+/** Minimal inline markdown: **bold** and *emphasis* only, as safe React nodes. */
+function renderEmphasis(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    return part;
+  });
+}
+
 export const Manuscript: React.FC<ManuscriptProps> = ({
   entries,
   isComposing,
   composingSteps,
+  composingStamp,
   onStrikeRun,
   onOpenBrief,
   onSetEssay,
@@ -76,7 +130,10 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                 <div className="not cf">
                   {not?.kick && <p className="sc kick not-kick">{not.kick}</p>}
                   {not?.paragraphs.map((p, pIdx) => (
-                    <p key={pIdx} dangerouslySetInnerHTML={{ __html: p }} />
+                    // App-authored or model-generated PLAIN TEXT only — never raw HTML.
+                    <p key={pIdx}>
+                      <RichText text={p} />
+                    </p>
                   ))}
                   {not?.suggestions && not.suggestions.length > 0 && (
                     <>
@@ -104,10 +161,8 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                         className="tbtn"
                         onClick={() => {
                           if (not.action?.actionKey === 'retry') onRetryLast();
-                          else if (not.action?.actionKey === 'bench')
-                            onPrefillQuery(
-                              'What’s a good benchmark conversion rate for product-led growth companies?'
-                            );
+                          else if (not.action?.actionKey === 'prefill')
+                            onPrefillQuery(not.action?.prefill || '');
                         }}
                       >
                         {not.action.label}
@@ -134,50 +189,27 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
               <article key={entry.id} className="entry">
                 <div className="a-body cf">
                   {/* Lead paragraph */}
-                  <p className="a-lead">
-                    {ans.lead}
-                    {entry.citations?.slice(0, 1).map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="sn-ref"
-                        data-note={c.id}
-                        data-n={c.refIndex}
-                        aria-label={`Read evidence note ${c.refIndex}`}
-                      >
-                        {c.refIndex}
-                      </button>
-                    ))}
-                  </p>
+                  {ans.lead && (
+                    <p className="a-lead">
+                      <RichText text={ans.lead} citations={entry.citations} />
+                    </p>
+                  )}
 
                   {/* Section paragraphs */}
                   {ans.sections.map((sec, sIdx) => {
-                    // Replace {{vohra}}, {{winters}}, etc. or render tokens
                     return (
                       <React.Fragment key={sIdx}>
-                        <div className="a-h">
-                          <span className="rn">{sec.rn}</span>
-                          <span>{sec.h}</span>
-                        </div>
-                        <p>
-                          {sec.bodyHtml}
-                          {sec.citedRefIndices.map((refIdx) => {
-                            const cit = entry.citations?.find((c) => c.refIndex === refIdx);
-                            if (!cit) return null;
-                            return (
-                              <button
-                                key={cit.id}
-                                type="button"
-                                className="sn-ref"
-                                data-note={cit.id}
-                                data-n={cit.refIndex}
-                                aria-label={`Read evidence note ${cit.refIndex}`}
-                              >
-                                {cit.refIndex}
-                              </button>
-                            );
-                          })}
-                        </p>
+                        {sec.h && (
+                          <div className="a-h">
+                            <span className="rn">{sec.rn}</span>
+                            <span>{sec.h}</span>
+                          </div>
+                        )}
+                        {sec.paragraphs.map((para, pIdx) => (
+                          <p key={pIdx}>
+                            <RichText text={para} citations={entry.citations} />
+                          </p>
+                        ))}
                       </React.Fragment>
                     );
                   })}
@@ -268,9 +300,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                   </li>
                 ))}
               </ol>
-              <p className="stamp comp-stamp">
-                qwen2.5:1.5b · local — nothing is bound until citations pass
-              </p>
+              <p className="stamp comp-stamp">{composingStamp}</p>
             </div>
           </article>
         )}
