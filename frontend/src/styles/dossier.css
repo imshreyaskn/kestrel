@@ -1,7 +1,24 @@
 /* =====================================================================
    KESTREL — EDITORIAL RESEARCH DOSSIER
    Bone & Aubergine Palette (Bone Base · Aubergine Accent)
+   Proposal 1: The Studio Dossier (Cabinet Grotesk + PP Mori)
    ===================================================================== */
+
+@font-face {
+  font-family: 'PP Mori';
+  src: url('/fonts/PPMori-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PP Mori';
+  src: url('/fonts/PPMori-SemiBold.woff') format('woff');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   /* — Core Palette (Bone Canvas Base · Aubergine Accent) — */
@@ -35,10 +52,10 @@
                    0 36px 90px -18px rgba(22, 22, 20, 0.24);
   --shadow:        var(--shadow-page);
 
-  /* — Typography — */
-  --f-disp: 'Fraunces', Georgia, serif;
-  --f-text: 'Newsreader', Georgia, serif;
-  --f-ui:   'Space Grotesk', system-ui, sans-serif;
+  /* — Typography: Proposal 1 (The Studio Dossier) — */
+  --f-disp: 'Cabinet Grotesk', 'PP Mori', system-ui, -apple-system, sans-serif;
+  --f-text: 'PP Mori', 'Cabinet Grotesk', system-ui, -apple-system, sans-serif;
+  --f-ui:   'Cabinet Grotesk', 'PP Mori', system-ui, -apple-system, sans-serif;
   --f-mono: 'Spline Sans Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   /* — Fluid Scale — */
@@ -301,7 +318,8 @@ html, body, * {
   pointer-events: auto;
 }
 .rhead-title-text {
-  font: italic 500 14.5px var(--f-disp);
+  font: 500 14px var(--f-disp);
+  letter-spacing: -0.01em;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
@@ -669,8 +687,8 @@ html, body, * {
   font: 600 10px var(--f-ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink);
 }
 .fm-mast .left em {
-  font: italic 500 11px var(--f-disp); text-transform: none;
-  letter-spacing: 0; color: var(--muted-ink); margin-left: 8px;
+  font: 500 11px var(--f-disp); text-transform: none;
+  letter-spacing: -0.01em; color: var(--muted-ink); margin-left: 8px;
 }
 .fm-mast .right {
   font: 500 8.5px var(--f-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
@@ -680,10 +698,10 @@ html, body, * {
 
 .hero-h {
   font-family: var(--f-disp);
-  font-weight: 380;
+  font-weight: 600;
   font-size: var(--t-display);
-  line-height: 0.99;
-  letter-spacing: -0.016em;
+  line-height: 0.98;
+  letter-spacing: -0.025em;
   margin: 0;
   color: var(--ink);
 }
@@ -692,21 +710,21 @@ html, body, * {
 }
 .hero-h .w {
   display: inline-block;
-  font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 0;
-  transition: font-variation-settings 0.6s var(--ease-out-expo), color 0.45s ease;
+  font-weight: 600;
+  transition: font-weight 0.2s ease, color 0.25s ease, transform 0.25s var(--ease-spring);
 }
 .hero-h .w:hover {
-  font-variation-settings: 'opsz' 144, 'SOFT' 80, 'WONK' 0;
+  font-weight: 700;
   color: var(--accent);
 }
-/* The one wonky word per page — animates SOFT 0 -> 80 on hover just like the rest, holding WONK 1 constant */
+/* The signature accent word per page — heavier weight and accented color */
 .hero-h .wonk {
-  font-style: italic;
-  font-variation-settings: 'opsz' 144, 'SOFT' 0, 'WONK' 1;
+  font-style: normal;
+  font-weight: 700;
   color: var(--accent);
 }
 .hero-h .w.wonk:hover {
-  font-variation-settings: 'opsz' 144, 'SOFT' 80, 'WONK' 1;
+  font-weight: 800;
   color: var(--accent-ink);
 }
 .hero-h .star {
@@ -751,7 +769,8 @@ html, body, * {
 
 .write-line textarea {
   flex: 1; border: 0; background: none; outline: none; resize: none;
-  font: italic 500 clamp(19px, 2.4vw, 25px)/1.4 var(--f-disp);
+  font: 500 clamp(18px, 2.3vw, 24px)/1.4 var(--f-disp);
+  letter-spacing: -0.012em;
   color: var(--ink);
   max-height: 190px; padding: 0 0 2px;
 }
@@ -811,7 +830,7 @@ html, body, * {
 }
 .try .sc { color: var(--faint); }
 .try-q {
-  font: italic 500 15.5px var(--f-disp);
+  font: 500 15px var(--f-disp);
   color: var(--ink-soft);
   border-bottom: 1px dotted var(--accent-line);
   transition: color var(--dur-fast), transform var(--dur-fast);
@@ -826,11 +845,11 @@ html, body, * {
   transition: background var(--dur-fast);
 }
 .idx-row:hover { background: var(--surface); }
-.idx-num { font: italic 500 15px var(--f-disp); color: var(--accent); }
-.idx-t { font: 500 21px var(--f-disp); letter-spacing: -0.008em; color: var(--ink); transition: color var(--dur-fast); }
+.idx-num { font: 600 14px var(--f-disp); color: var(--accent); }
+.idx-t { font: 600 20px var(--f-disp); letter-spacing: -0.012em; color: var(--ink); transition: color var(--dur-fast); }
 .idx-row:hover .idx-t { color: var(--accent); }
 .idx-d { font: 400 13.5px/1.5 var(--f-text); color: var(--muted-ink); margin-top: 3px; }
-.idx-a { font: 300 20px var(--f-disp); color: var(--muted-ink); transition: transform var(--dur-fast), color var(--dur-fast); }
+.idx-a { font: 400 18px var(--f-disp); color: var(--muted-ink); transition: transform var(--dur-fast), color var(--dur-fast); }
 .idx-row:hover .idx-a { transform: translateX(5px); color: var(--accent); }
 .fm-foot { margin: clamp(24px, 4vh, 36px) 0 0; font: 500 8.5px var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 .fm-dock {
@@ -892,8 +911,8 @@ html, body, * {
 
 .e-kick { display: flex; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .e-q {
-  font: italic 500 clamp(23px, 2.8vw, 30px)/1.28 var(--f-disp);
-  letter-spacing: -0.012em; margin: 12px 0 0; max-width: 24ch;
+  font: 600 clamp(22px, 2.7vw, 29px)/1.25 var(--f-disp);
+  letter-spacing: -0.02em; margin: 12px 0 0; max-width: 26ch;
   color: var(--ink);
 }
 
@@ -958,26 +977,26 @@ html, body, * {
 }
 .a-body > p.p-hot { background: var(--wash); box-shadow: 0 0 0 6px var(--wash); }
 
-/* Editorial Drop Cap in Aubergine */
+/* Editorial Drop Cap in Aubergine — bold, clean modern grotesque anchor */
 .a-lead::first-letter {
   float: left;
   font-family: var(--f-disp);
-  font-weight: 500;
-  font-size: 3.1em;
-  line-height: 0.82;
-  padding: 0.06em 0.12em 0 0;
+  font-weight: 700;
+  font-size: 3.2em;
+  line-height: 0.84;
+  padding: 0.04em 0.14em 0 0;
   color: var(--accent);
 }
 
 .a-h {
   display: flex; gap: 13px; align-items: baseline;
-  font: 600 19.5px/1.3 var(--f-disp);
-  letter-spacing: -0.006em; margin: 30px 0 10px;
+  font: 700 19px/1.3 var(--f-disp);
+  letter-spacing: -0.012em; margin: 30px 0 10px;
   color: var(--ink);
 }
 .a-h .rn {
-  font: italic 600 12.5px var(--f-disp);
-  color: var(--accent); letter-spacing: 0.08em; flex: none;
+  font: 700 12px var(--f-disp);
+  color: var(--accent); letter-spacing: 0.06em; flex: none;
 }
 .thin {
   margin: 28px 0 0; padding: 2px 0 2px 18px;
@@ -1076,7 +1095,7 @@ html, body, * {
 /* Blank state */
 .blank { max-width: 52ch; padding: 64px 0 30px; }
 .blank-orn { font: 300 44px var(--f-disp); color: var(--accent); line-height: 1; }
-.blank h2 { font: italic 500 26px var(--f-disp); margin: 16px 0 10px; letter-spacing: -0.01em; color: var(--ink); }
+.blank h2 { font: 600 24px var(--f-disp); margin: 16px 0 10px; letter-spacing: -0.015em; color: var(--ink); }
 .blank p { font: 400 15px/1.65 var(--f-text); color: var(--muted-ink); margin: 0; }
 
 /* Answer footer */
@@ -1227,11 +1246,11 @@ html, body, * {
 }
 .fold-doc > .sc { margin-bottom: 14px; }
 .fold-doc h1 {
-  font: 500 var(--t-h1)/1.12 var(--f-disp);
-  letter-spacing: -0.018em; margin: 0 0 12px; max-width: 20ch;
+  font: 700 var(--t-h1)/1.12 var(--f-disp);
+  letter-spacing: -0.022em; margin: 0 0 12px; max-width: 20ch;
   color: var(--ink);
 }
-.fold-sub { font: italic 400 15.5px/1.6 var(--f-text); color: var(--muted-ink); margin: 0 0 8px; max-width: 60ch; }
+.fold-sub { font: 400 15px/1.6 var(--f-text); color: var(--muted-ink); margin: 0 0 8px; max-width: 60ch; }
 .fold-meta { margin: 0 0 8px; color: var(--faint); }
 
 .fs {
@@ -1239,7 +1258,7 @@ html, body, * {
   gap: 10px; padding: 30px 0 28px;
   border-top: 1px solid var(--border);
 }
-.fs-num { font: italic 500 15px var(--f-disp); color: var(--accent); padding-top: 2px; }
+.fs-num { font: 600 14px var(--f-disp); color: var(--accent); padding-top: 2px; }
 .fs h2 {
   font: 600 11px var(--f-ui); letter-spacing: 0.16em; text-transform: uppercase;
   margin: 0 0 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
@@ -1287,7 +1306,7 @@ html, body, * {
   display: flex; align-items: center; gap: 16px; padding: 0 22px; flex-wrap: wrap;
 }
 .pv-id { display: flex; align-items: baseline; gap: 12px; min-width: 0; flex: 1; }
-.pv-title { font: italic 500 15px var(--f-disp); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.pv-title { font: 500 14px var(--f-disp); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .pv-kind {
   font: 600 8.5px var(--f-ui); letter-spacing: 0.12em; text-transform: uppercase;
   background: var(--accent-soft); color: var(--accent-ink);
@@ -1323,7 +1342,7 @@ html, body, * {
   padding: 42px 46px 50px;
   font: 400 15.5px/1.7 var(--f-text);
 }
-.pv-doc h1 { font: 550 26px/1.2 var(--f-disp); letter-spacing: -0.014em; margin: 0 0 8px; color: var(--ink); }
+.pv-doc h1 { font: 600 24px/1.2 var(--f-disp); letter-spacing: -0.016em; margin: 0 0 8px; color: var(--ink); }
 .pv-doc h2 { font: 600 10px var(--f-ui); letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin: 30px 0 10px; }
 .pv-doc p { margin: 0 0 13px; }
 .pv-doc ol { padding-left: 22px; margin: 0 0 13px; }
