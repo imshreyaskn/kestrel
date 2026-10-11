@@ -99,9 +99,10 @@ class MessageRequest(BaseModel):
     @classmethod
     def _validate_content_non_blank(cls, v: str) -> str:
         v = _reject_invalid_control_chars(v)
-        if not v.strip():
+        stripped = v.strip()
+        if not stripped:
             raise ValueError("content must contain non-whitespace characters")
-        return v
+        return stripped
 
     @field_validator("product_context")
     @classmethod

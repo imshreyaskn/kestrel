@@ -210,10 +210,12 @@ def validate_agent_response(
         raw_citations = payload.get("citations", [])
         cleaned_citations = filter_valid_citations(raw_citations, valid_evidence_ids)
         essay_text = str(payload.get("essay_markdown", "")).strip()
+        if not essay_text:
+            raise StructuredExtractionError("essay_markdown must not be empty")
         insufficient = bool(payload.get("insufficient_evidence", False))
 
-        # Inline markers [E#] are citations, not prose words
-        countable_text = re.sub(r"\[E\d+\]", "", essay_text)
+        # Inline markers [E#] or multi-markers like [E1, E2] are citations, not prose words
+        countable_text = re.sub(r"\[E\d+(?:\s*,\s*E\d+)*\]", "", essay_text)
         actual_wc = count_words(countable_text)
         approx_wc = int(payload.get("approximate_word_count", actual_wc) or actual_wc)
 

@@ -19,6 +19,7 @@ from backend.app.agent_client.validator import (
     filter_valid_citations,
     validate_agent_response,
 )
+from backend.app.core.json_extractor import StructuredExtractionError
 
 
 def test_filter_valid_citations_prunes_hallucinated_ids():
@@ -184,3 +185,140 @@ def test_count_words():
 def test_essay_word_bounds_match_spec():
     # Guard: the enforced bounds must equal the spec §8.4 contract.
     assert (ESSAY_MIN_WORDS, ESSAY_MAX_WORDS) == (1150, 1350)
+
+
+def test_validate_essay_custom_word_target_accepted():
+    target = 500
+    # Range is 450 to 550 words
+    essay_text = "Word " * 500
+    raw_llm = json.dumps({
+        "title": "Custom Length Essay",
+        "essay_markdown": essay_text,
+        "approximate_word_count": 500,
+        "writing_path": "actionable",
+        "citations": [{"evidence_id": "E1", "supports": "Key point"}],
+        "insufficient_evidence": False,
+    })
+    res = validate_agent_response(
+        raw_llm,
+        mode="essay",
+        valid_evidence_ids={"E1"},
+        essay_word_target=target,
+    )
+    assert isinstance(res, ValidatedEssayResponse)
+    assert res.actual_word_count == 500
+    assert res.title == "Custom Length Essay"
+
+
+def test_validate_essay_custom_word_target_rejected():
+    target = 500
+    # Range is 450 to 550 words; 400 words must be rejected
+    essay_text = "Word " * 400
+    raw_llm = json.dumps({
+        "title": "Too Short Essay",
+        "essay_markdown": essay_text,
+        "approximate_word_count": 400,
+        "writing_path": "actionable",
+        "citations": [],
+        "insufficient_evidence": False,
+    })
+    with pytest.raises(EssayLengthError) as exc_info:
+        validate_agent_response(
+            raw_llm,
+            mode="essay",
+            valid_evidence_ids=set(),
+            essay_word_target=target,
+        )
+    assert exc_info.value.min_words == 450
+    assert exc_info.value.max_words == 550
+    assert exc_info.value.actual_words == 400
+
+
+def test_validate_essay_insufficient_evidence_bypasses_word_count():
+    decline_text = "The archive lacks sufficient depth on early-stage nuclear fusion marketing."
+    raw_llm = json.dumps({
+        "title": "Topic Not in Archive",
+        "essay_markdown": decline_text,
+        "approximate_word_count": 10,
+        "writing_path": "actionable",
+        "citations": [],
+        "insufficient_evidence": True,
+    })
+    res = validate_agent_response(
+        raw_llm,
+        mode="essay",
+        valid_evidence_ids=set(),
+    )
+    assert isinstance(res, ValidatedEssayResponse)
+    assert res.insufficient_evidence is True
+    assert res.essay_markdown == decline_text
+
+
+def test_validate_essay_rejects_empty_markdown_even_when_insufficient():
+    raw_llm = json.dumps({
+        "title": "Declined",
+        "essay_markdown": "   ",
+        "approximate_word_count": 0,
+        "writing_path": "actionable",
+        "citations": [],
+        "insufficient_evidence": True,
+    })
+    with pytest.raises(StructuredExtractionError) as exc_info:
+        validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
+    assert "essay_markdown must not be empty" in str(exc_info.value)
+
+
+def test_validate_essay_strips_single_and_multi_citations_from_word_count():
+    # 500 actual words + multi-citation tags
+    prose = ("strategy " * 500) + " [E1, E2] [E1,E3] [E1]"
+    raw_llm = json.dumps({
+        "title": "Citation Stripping Essay",
+        "essay_markdown": prose,
+        "approximate_word_count": 500,
+        "writing_path": "actionable",
+        "citations": [{"evidence_id": "E1", "supports": "Point"}],
+        "insufficient_evidence": False,
+    })
+    res = validate_agent_response(
+        raw_llm,
+        mode="essay",
+        valid_evidence_ids={"E1", "E2", "E3"},
+        essay_word_target=500,
+    )
+    assert isinstance(res, ValidatedEssayResponse)
+    assert res.actual_word_count == 500
+
+
+def test_validate_research_rejects_empty_answer():
+    raw_llm = json.dumps({
+        "answer_markdown": "   ",
+        "citations": [],
+        "insufficient_evidence": False,
+    })
+    with pytest.raises(StructuredExtractionError) as exc_info:
+        validate_agent_response(raw_llm, mode="research", valid_evidence_ids=set())
+    assert "answer_markdown must not be empty" in str(exc_info.value)
+
+
+def test_validate_growth_brief_rejects_empty_recommendation_when_sufficient():
+    raw_llm = json.dumps({
+        "title": "Growth Brief",
+        "problem": "Churn",
+        "research_summary": "Summary",
+        "recommendation": "   ",
+        "insufficient_evidence": False,
+    })
+    with pytest.raises(StructuredExtractionError) as exc_info:
+        validate_agent_response(raw_llm, mode="growth_brief", valid_evidence_ids=set())
+    assert "recommendation must not be empty" in str(exc_info.value)
+
+
+def test_validate_artifact_rejects_empty_content():
+    raw_llm = json.dumps({
+        "title": "Empty Plate",
+        "content": "   ",
+        "kind": "markdown",
+    })
+    with pytest.raises(StructuredExtractionError) as exc_info:
+        validate_agent_response(raw_llm, mode="artifact_markdown", valid_evidence_ids=set())
+    assert "Artifact content must not be empty" in str(exc_info.value)

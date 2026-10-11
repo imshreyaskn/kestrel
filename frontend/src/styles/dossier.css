@@ -490,18 +490,17 @@ html::-webkit-scrollbar-thumb:hover {
    ===================================================================== */
 .rail {
   position: fixed; top: 68px; bottom: 20px; left: 14px; z-index: 150;
-  width: 280px;
+  width: 50px;
   background: transparent;
   border: none;
   box-shadow: none;
   display: flex; flex-direction: column; gap: 10px;
   overflow: visible;
   pointer-events: none;
-  clip-path: inset(0 calc(100% - 50px) 0 0 round 0);
-  transition: clip-path var(--dur-deliberate) var(--ease-out-expo);
+  transition: width var(--dur-deliberate) var(--ease-out-expo);
 }
 .rail:hover, .rail:focus-within, .rail.open {
-  clip-path: inset(0 0 0 0);
+  width: 280px;
   background: transparent;
   box-shadow: none;
 }
@@ -1261,6 +1260,10 @@ html::-webkit-scrollbar-thumb:hover {
   perspective: 1400px;
 }
 .fold.open { opacity: 1; visibility: visible; }
+.fold.closing {
+  opacity: 0;
+  transition: opacity 0.32s var(--ease-in-out-soft);
+}
 
 .fold-doc-wrap {
   width: 100%; max-width: 860px; height: 94vh;
@@ -1276,9 +1279,16 @@ html::-webkit-scrollbar-thumb:hover {
 .fold.open .fold-doc-wrap {
   animation: fold-open 0.6s var(--spring-heavy) forwards;
 }
+.fold.closing .fold-doc-wrap {
+  animation: fold-close 0.32s var(--ease-in-out-soft) forwards;
+}
 @keyframes fold-open {
   from { transform: rotateX(10deg) translateY(-20px); opacity: 0; }
   to   { transform: rotateX(0deg)  translateY(0);     opacity: 1; }
+}
+@keyframes fold-close {
+  from { transform: rotateX(0deg) translateY(0);     opacity: 1; }
+  to   { transform: rotateX(8deg) translateY(-14px); opacity: 0; }
 }
 
 .fold-bar {
@@ -1291,8 +1301,9 @@ html::-webkit-scrollbar-thumb:hover {
 .fold-spacer { flex: 1; }
 .imp-chip {
   font: 600 9.5px var(--f-ui); letter-spacing: 0.13em; text-transform: uppercase;
-  background: var(--accent-soft); color: var(--accent-ink);
-  border-radius: 999px; padding: 6px 13px; white-space: nowrap;
+  background: var(--gold-soft); color: var(--ink);
+  border: 1px solid var(--gold);
+  border-radius: 999px; padding: 5px 12px; white-space: nowrap;
 }
 
 .fold-doc {
@@ -1355,6 +1366,10 @@ html::-webkit-scrollbar-thumb:hover {
   transition: opacity var(--dur-deliberate) var(--ease-out-expo), visibility var(--dur-deliberate);
 }
 .pv.open { opacity: 1; visibility: visible; }
+.pv.closing {
+  opacity: 0;
+  transition: opacity 0.24s var(--ease-in-out-soft);
+}
 
 .pv-bar {
   height: 56px; flex: none;
@@ -1433,7 +1448,19 @@ html::-webkit-scrollbar-thumb:hover {
   opacity: 1;
   transform: translateY(0) rotate(-0.35deg);
 }
+.toast.out {
+  opacity: 0;
+  transform: translateY(10px) rotate(-0.2deg);
+  transition: opacity var(--dur-normal) var(--ease-in-out-soft),
+              transform var(--dur-normal) var(--ease-in-out-soft);
+}
 .toast .icon { color: var(--accent); }
+.toast.danger {
+  border-left-color: var(--danger);
+}
+.toast.danger .icon {
+  color: var(--danger);
+}
 
 /* Scrim */
 .scrim {
@@ -1512,16 +1539,14 @@ html::-webkit-scrollbar-thumb:hover {
     transform: translateX(-105%);
     left: 10px; top: 58px; bottom: 14px;
     width: min(290px, calc(100vw - 20px));
-    clip-path: none;
     transition: transform var(--dur-deliberate) var(--ease-sheet);
     z-index: 950;
     pointer-events: none;
   }
-  .rail:hover, .rail:focus-within { width: min(290px, calc(100vw - 20px)); clip-path: none; }
+  .rail:hover, .rail:focus-within { width: min(290px, calc(100vw - 20px)); }
   .rail.open {
     transform: none;
     pointer-events: auto;
-    clip-path: none;
   }
   .rail .rl-t, .rail .rl-m, .rail .rl-group, .rail .rail-new .rl-t { opacity: 1; }
   .rail-spine, .rail-protolabel { display: none; }

@@ -184,9 +184,8 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
 
   try {
     const userPromptReminder =
-      payload.evidence.length > 0
-        ? "Remember: For substantive claims, cite evidence using tags like [E1] and populate the \"citations\" array. For conversational greetings or identity queries, respond warmly with citations: []. Output strictly valid JSON matching the schema."
-        : "Remember: For conversational queries or assistance, respond warmly as Kestrel with citations: [] and insufficient_evidence: false. Output strictly valid JSON matching the schema.";
+      "Reminder: apply the EPISTEMIC RULES. Archive facts → cite [E#]. Your own analysis → label it. " +
+      "Conversational turns → warm, brief, citations []. Out of scope → politely decline with scope: 'out_of_scope', citations: []. Output strictly valid JSON matching the schema.";
 
     const systemPrompt = `${payload.system_prompt}\n\n${userPromptReminder}`;
 

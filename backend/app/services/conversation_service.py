@@ -65,7 +65,7 @@ ABSTENTION_FOLLOW_UP = (
     "framework, or guest story from the podcast?"
 )
 
-_CITATION_MARKER_RE = re.compile(r"\s?\[(?:E\d+)\]")
+_CITATION_MARKER_RE = re.compile(r"\[E\d+(?:\s*,\s*E\d+)*\]")
 
 
 class ModelNotAllowedError(ValueError):
@@ -376,7 +376,7 @@ class ConversationService:
             {
                 "role": m.role,
                 "content": (
-                    _CITATION_MARKER_RE.sub("", m.content).strip()
+                    _CITATION_MARKER_RE.sub("[source]", m.content).strip()
                     if m.role == "assistant" and m.content
                     else m.content
                 ),
@@ -460,62 +460,72 @@ class ConversationService:
                     essay_word_target=target_word_count,
                 )
             except StructuredExtractionError as first_error:
-                logger.warning(
-                    "Run %s: initial model output failed validation (%s); "
-                    "attempting one constrained repair",
-                    run_id,
-                    first_error,
-                )
-                yield {
-                    "event": "stage",
-                    "data": {
-                        "stage": "validating",
-                        "label": "Repairing response format...",
-                    },
-                }
-                repair_prompt = build_repair_system_prompt(
-                    mode=mode,
-                    evidence_block=evidence_block,
-                    product_context=product_context,
-                    validation_error=str(first_error),
-                    essay_word_target=target_word_count,
-                )
-                gw_result = await self._run_cancellable(
-                    self.gateway_client.generate(
-                        session_id=str(session_id),
-                        current_user_message=content,
+                if not evidence_items:
+                    # Nothing to ground on AND the model output is unusable: honest canned
+                    # fallback (spec §11.2) instead of burning a repair on an empty context.
+                    logger.info(
+                        "Run %s: generation failed on empty evidence (%s); raw response: %r; falling back immediately to abstention",
+                        run_id,
+                        first_error,
+                        gw_result.raw_response,
+                    )
+                    validated_any = ValidatedResearchResponse(
+                        answer_markdown=ABSTENTION_ANSWER,
+                        citations=[],
+                        insufficient_evidence=True,
+                        follow_up_question=ABSTENTION_FOLLOW_UP,
+                    )
+                else:
+                    logger.warning(
+                        "Run %s: initial model output failed validation (%s); raw response: %r; attempting one constrained repair",
+                        run_id,
+                        first_error,
+                        gw_result.raw_response,
+                    )
+                    yield {
+                        "event": "stage",
+                        "data": {
+                            "stage": "validating",
+                            "label": "Repairing response format...",
+                        },
+                    }
+                    repair_prompt = build_repair_system_prompt(
                         mode=mode,
-                        provider=provider,
-                        cloud_provider=effective_cloud_provider,
-                        model_id=effective_model_id,
-                        conversation_context=conversation_context,
-                        evidence=evidence_items,
+                        evidence_block=evidence_block,
                         product_context=product_context,
-                        request_id=run_id,
-                        system_prompt=repair_prompt,
-                    ),
-                    is_disconnected=is_disconnected,
-                )
-                try:
-                    validated_any = validate_agent_response(
-                        raw_response_text=gw_result.raw_response,
-                        mode=mode,
-                        valid_evidence_ids=valid_evidence_ids,
+                        validation_error=str(first_error),
                         essay_word_target=target_word_count,
                     )
-                except StructuredExtractionError:
-                    if not evidence_items and mode == "research":
-                        logger.info(
-                            "Run %s: generation repair failed on empty evidence; falling back to abstention",
+                    gw_result = await self._run_cancellable(
+                        self.gateway_client.generate(
+                            session_id=str(session_id),
+                            current_user_message=content,
+                            mode=mode,
+                            provider=provider,
+                            cloud_provider=effective_cloud_provider,
+                            model_id=effective_model_id,
+                            conversation_context=conversation_context,
+                            evidence=evidence_items,
+                            product_context=product_context,
+                            request_id=run_id,
+                            system_prompt=repair_prompt,
+                        ),
+                        is_disconnected=is_disconnected,
+                    )
+                    try:
+                        validated_any = validate_agent_response(
+                            raw_response_text=gw_result.raw_response,
+                            mode=mode,
+                            valid_evidence_ids=valid_evidence_ids,
+                            essay_word_target=target_word_count,
+                        )
+                    except StructuredExtractionError as repair_error:
+                        logger.error(
+                            "Run %s: repair model output also failed validation (%s); raw response: %r",
                             run_id,
+                            repair_error,
+                            gw_result.raw_response,
                         )
-                        validated_any = ValidatedResearchResponse(
-                            answer_markdown=ABSTENTION_ANSWER,
-                            citations=[],
-                            insufficient_evidence=True,
-                            follow_up_question=ABSTENTION_FOLLOW_UP,
-                        )
-                    else:
                         raise
 
             validated = validated_any
@@ -537,12 +547,17 @@ class ConversationService:
 
             # Determine assistant content based on validated type
             if isinstance(validated, ValidatedGrowthBriefResponse):
+                footer = (
+                    "\n\n*(Structured Growth Brief persisted to workbench)*"
+                    if not validated.insufficient_evidence
+                    else ""
+                )
                 assistant_message.content = (
                     f"## {validated.title}\n\n"
                     f"**Problem:** {validated.problem}\n\n"
                     f"**Recommendation:** {validated.recommendation}\n\n"
-                    f"**Research Summary:** {validated.research_summary}\n\n"
-                    f"*(Structured Growth Brief persisted to workbench)*"
+                    f"**Research Summary:** {validated.research_summary}"
+                    f"{footer}"
                 )
                 if not validated.insufficient_evidence:
                     brief = await GrowthBriefService.create_growth_brief(

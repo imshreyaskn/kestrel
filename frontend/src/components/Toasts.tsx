@@ -21,16 +21,31 @@ const Slip: React.FC<{ toast: ToastMessage }> = ({ toast }) => {
   }, []);
 
   return (
-    <div ref={ref} className="toast" role="status">
-      <svg
-        className="icon"
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        style={{ width: '13px', height: '13px', strokeWidth: 2.2 }}
-      >
-        {/* Aubergine ink tick */}
-        <path d="M20 6 9 17l-5-5" />
-      </svg>
+    <div
+      ref={ref}
+      className={`toast${toast.tone === 'danger' ? ' danger' : ''}${toast.out ? ' out' : ''}`}
+    >
+      {toast.tone === 'danger' ? (
+        <svg
+          className="icon"
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          style={{ width: '13px', height: '13px', strokeWidth: 2.2 }}
+        >
+          {/* Oxblood strike glyph (§6.2) */}
+          <path d="M4 12h16M4 12l2-2M4 12l2 2M20 12l-2-2M20 12l-2 2" />
+        </svg>
+      ) : (
+        <svg
+          className="icon"
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          style={{ width: '13px', height: '13px', strokeWidth: 2.2 }}
+        >
+          {/* Aubergine ink tick */}
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      )}
       <span>{toast.message}</span>
     </div>
   );

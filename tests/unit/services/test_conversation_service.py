@@ -349,7 +349,7 @@ async def test_conversation_service_fallback_abstention_on_empty_evidence_when_e
         )
     ]
 
-    assert mock_gateway.generate.call_count == 2
+    assert mock_gateway.generate.call_count == 1
     completed = next(e for e in events if e["event"] == "completed")
     assert completed["data"]["insufficient_evidence"] is True
     assert completed["data"]["citations"] == []
@@ -359,7 +359,7 @@ async def test_conversation_service_fallback_abstention_on_empty_evidence_when_e
 
 @pytest.mark.asyncio
 async def test_conversation_service_strips_citations_from_history():
-    """Citations [E1] in history assistant messages must be stripped before prompt replay."""
+    """Citations [E1] in history assistant messages must be substituted with [source] before prompt replay."""
     user_id = uuid.uuid4()
     session_id = uuid.uuid4()
 
@@ -421,9 +421,10 @@ async def test_conversation_service_strips_citations_from_history():
     passed_context = mock_gateway.generate.call_args.kwargs["conversation_context"]
     assert len(passed_context) == 1
     assert passed_context[0]["role"] == "assistant"
-    assert passed_context[0]["content"] == "Elena Verna noted that PLG requires virality."
+    assert passed_context[0]["content"] == "Elena Verna noted [source] that PLG requires virality [source]."
     assert "[E1]" not in passed_context[0]["content"]
     assert "[E2]" not in passed_context[0]["content"]
+    assert "[source]" in passed_context[0]["content"]
 
 
 @pytest.mark.asyncio

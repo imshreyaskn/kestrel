@@ -167,4 +167,6 @@ export interface HealthReadyResponse {
 export interface ToastMessage {
   id: string;
   message: string;
+  tone?: 'ink' | 'danger';
+  out?: boolean;
 }

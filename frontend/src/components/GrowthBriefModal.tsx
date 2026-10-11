@@ -1,6 +1,7 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GrowthBriefData } from '../types';
-import { stampPress } from '../lib/motion';
+import { stampPress, prefersReducedMotion } from '../lib/motion';
+import { useFocusTrap } from '../lib/useFocusTrap';
 
 interface GrowthBriefModalProps {
   isOpen: boolean;
@@ -67,49 +68,27 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
   // prop whenever a different brief (or a freshly saved version) arrives.
   const [draft, setDraft] = useState<GrowthBriefData>(brief);
 
+  const [isClosing, setIsClosing] = useState(false);
+
   useEffect(() => {
     setDraft(brief);
   }, [brief.id, brief.version, brief.updatedAt]);
 
-  useEffect(() => {
-    if (isOpen && returnBtnRef.current) {
-      returnBtnRef.current.focus();
+  const requestClose = useCallback(() => {
+    if (prefersReducedMotion() || isClosing) {
+      onClose();
+      return;
     }
-  }, [isOpen]);
+    setIsClosing(true);
+    setTimeout(() => {
+      setIsClosing(false);
+      onClose();
+    }, 320);
+  }, [onClose, isClosing]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      if (e.key === 'Escape') {
-        onClose();
-        return;
-      }
-      if (e.key === 'Tab' && modalRef.current) {
-        const focusable = Array.from(
-          modalRef.current.querySelectorAll<HTMLElement>(
-            'button, [contenteditable="true"], input, textarea, a[href]'
-          )
-        ).filter((el) => el.offsetParent !== null);
+  useFocusTrap(modalRef, isOpen, requestClose);
 
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
+  if (!isOpen && !isClosing) return null;
 
   const set = <K extends keyof GrowthBriefData>(key: K, value: GrowthBriefData[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -118,15 +97,22 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
     setDraft((prev) => ({ ...prev, experiment: { ...prev.experiment, [key]: value } }));
   };
 
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === modalRef.current) {
+      requestClose();
+    }
+  };
+
   return (
     <div
       ref={modalRef}
-      className="fold open"
+      className={`fold open${isClosing ? ' closing' : ''}`}
       id="fold"
       role="dialog"
       aria-modal="true"
       aria-labelledby="foldH"
       aria-hidden={!isOpen}
+      onClick={handleBackdropClick}
     >
       <div className="fold-doc-wrap">
         <header className="fold-bar">
@@ -135,7 +121,7 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
             type="button"
             className="tbtn"
             id="foldBack"
-            onClick={onClose}
+            onClick={requestClose}
           >
             ← Return to the dossier
           </button>

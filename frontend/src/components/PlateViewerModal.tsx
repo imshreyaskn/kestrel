@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ArtifactData } from '../types';
 import { CSP_HEADER } from '../lib/demoData';
 import { MarkdownViewer } from './MarkdownViewer';
+import { useFocusTrap } from '../lib/useFocusTrap';
+import { prefersReducedMotion } from '../lib/motion';
 
 interface PlateViewerModalProps {
   isOpen: boolean;
@@ -19,29 +21,31 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
   onCopySuccess,
 }) => {
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview');
+  const [isClosing, setIsClosing] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setViewMode('preview');
-      if (closeBtnRef.current) {
-        closeBtnRef.current.focus();
-      }
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  const requestClose = useCallback(() => {
+    if (prefersReducedMotion() || isClosing) {
+      onClose();
+      return;
+    }
+    setIsClosing(true);
+    setTimeout(() => {
+      setIsClosing(false);
+      onClose();
+    }, 240);
+  }, [onClose, isClosing]);
 
-  if (!isOpen || !artifact) return null;
+  useFocusTrap(modalRef, isOpen, requestClose);
+
+  if ((!isOpen && !isClosing) || !artifact) return null;
 
   const handleCopy = () => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -72,7 +76,8 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
 
   return (
     <div
-      className="pv open"
+      ref={modalRef}
+      className={`pv open${isClosing ? ' closing' : ''}`}
       id="pv"
       role="dialog"
       aria-modal="true"
@@ -94,7 +99,7 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
             border: '1px solid var(--border)',
             borderRadius: '8px',
           }}
-          onClick={onClose}
+          onClick={requestClose}
         >
           <svg className="icon" aria-hidden="true" viewBox="0 0 24 24">
             <path d="M18 6 6 18M6 6l12 12" />

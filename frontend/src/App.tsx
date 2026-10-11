@@ -87,12 +87,15 @@ export const App: React.FC = () => {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
-  const showToast = useCallback((message: string) => {
+  const showToast = useCallback((message: string, tone: 'ink' | 'danger' = 'ink') => {
     const id = 'toast-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5);
-    setToasts((prev) => [...prev, { id, message }]);
+    setToasts((prev) => [...prev, { id, message, tone }].slice(-3));
+    setTimeout(() => {
+      setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, out: true } : t)));
+    }, 2800);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 2800);
+    }, 3150);
   }, []);
 
   const announce = useCallback((msg: string) => {
@@ -128,7 +131,7 @@ export const App: React.FC = () => {
       })
       .catch((err: ApiError) => {
         setSessions([]);
-        showToast(`The archive is unreachable — ${err.message}`);
+        showToast(`The archive is unreachable — ${err.message}`, 'danger');
       });
   }, [showToast]);
 
@@ -223,7 +226,7 @@ export const App: React.FC = () => {
           }
         } catch (err) {
           const msg = err instanceof ApiError ? err.message : 'history could not be read';
-          showToast(`Could not read this dossier — ${msg}`);
+          showToast(`Could not read this dossier — ${msg}`, 'danger');
         }
       }
     },
@@ -265,7 +268,7 @@ export const App: React.FC = () => {
         } catch {
           // Revert on failure
           setSessions((prev) => [target, ...prev]);
-          showToast('Could not delete dossier — the archive kept it');
+          showToast('Could not delete dossier — the archive kept it', 'danger');
         }
       } else {
         showToast('Dossier removed from tour');
@@ -308,7 +311,7 @@ export const App: React.FC = () => {
           setSessions((prev) =>
             prev.map((s) => (s.id === activeSessionId ? { ...s, title: previous || s.title } : s))
           );
-          showToast('Retitle failed — the archive kept the old title');
+          showToast('Retitle failed — the archive kept the old title', 'danger');
         }
       );
     },
@@ -322,7 +325,8 @@ export const App: React.FC = () => {
         showToast(
           newProv === 'local'
             ? 'Local Ollama is unreachable — start it, or use the cloud setting'
-            : 'The cloud provider is not configured — add its API key server-side'
+            : 'The cloud provider is not configured — add its API key server-side',
+          'danger'
         );
       }
       setActiveProvider(newProv);
@@ -453,7 +457,7 @@ export const App: React.FC = () => {
                   announce('Plate filed and open for examination.');
                 } catch (err) {
                   const msg = err instanceof ApiError ? err.message : 'the plate could not be read';
-                  showToast(`Plate was persisted but could not be opened — ${msg}`);
+                  showToast(`Plate was persisted but could not be opened — ${msg}`, 'danger');
                 }
                 return;
               }
@@ -475,7 +479,7 @@ export const App: React.FC = () => {
                   announce('Growth brief composed and opened.');
                 } catch (err) {
                   const msg = err instanceof ApiError ? err.message : 'the brief could not be read';
-                  showToast(`Brief was persisted but could not be opened — ${msg}`);
+                  showToast(`Brief was persisted but could not be opened — ${msg}`, 'danger');
                 }
               }
 
@@ -527,7 +531,7 @@ export const App: React.FC = () => {
               createdAt: new Date().toISOString(),
             });
             announce('The composing run failed.');
-            showToast(`The run failed — ${err.message}`);
+            showToast(`The run failed — ${err.message}`, 'danger');
           },
           onCancelled: () => {
             // The struck-run notice is appended by handleStrikeRun.
@@ -568,7 +572,7 @@ export const App: React.FC = () => {
         }
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : 'the archive is unreachable';
-        showToast(`Could not open a dossier — ${msg}`);
+        showToast(`Could not open a dossier — ${msg}`, 'danger');
         announce('Could not open a dossier. Nothing was submitted.');
         return;
       }
@@ -623,11 +627,11 @@ export const App: React.FC = () => {
         announce(`Brief saved. Version ${saved.version}.`);
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
-          showToast('Version conflict: please reload the latest brief');
+          showToast('Version conflict: please reload the latest brief', 'danger');
           announce('Version conflict. Reload the latest brief.');
         } else {
           const msg = err instanceof ApiError ? err.message : 'the archive is unreachable';
-          showToast(`Bind failed — ${msg}`);
+          showToast(`Bind failed — ${msg}`, 'danger');
         }
       }
     },
