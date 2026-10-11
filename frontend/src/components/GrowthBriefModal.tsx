@@ -143,7 +143,7 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
         </header>
 
         <div className="fold-doc">
-        <p className="sc kick">Kestrel · Growth Brief</p>
+        <p className="sc kick"><span className="kestrel-brand-wordmark">Kestrel</span> · Growth Brief</p>
         <h1 id="foldH">{draft.title}</h1>
         <p className="fold-sub">
           A structured deliverable drafted from the dossier’s research — sections are editable,

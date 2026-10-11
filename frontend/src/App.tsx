@@ -583,6 +583,7 @@ export const App: React.FC = () => {
     async (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => {
       lastRunRef.current = { text, mode, format };
       let currentSession = activeSession;
+      const isInitialSwitch = view === 'frontmatter' || !currentSession;
 
       try {
         if (!currentSession) {
@@ -591,7 +592,6 @@ export const App: React.FC = () => {
           setSessions((prev) => [newSess, ...prev]);
           setActiveSessionId(newSess.id);
           setDraftTitle(null);
-          setView('manuscript');
           currentSession = newSess;
         } else if (currentSession.isDemo) {
           showToast('Design tour dossier — binding to a fresh archive dossier');
@@ -623,21 +623,35 @@ export const App: React.FC = () => {
         });
       };
 
-      if ('startViewTransition' in document && !prefersReducedMotion()) {
-        (document as any).startViewTransition(() => {
+      if (isInitialSwitch) {
+        // Initial transition: Frontmatter -> Manuscript
+        if ('startViewTransition' in document && !prefersReducedMotion()) {
+          (document as any).startViewTransition(() => {
+            setView('manuscript');
+            appendQueryEntry();
+          });
+        } else {
+          setView('manuscript');
           appendQueryEntry();
-        });
+        }
+        window.scrollTo({ top: 0, behavior: 'instant' });
       } else {
-        appendQueryEntry();
+        // Subsequent prompt inside active Manuscript
+        if ('startViewTransition' in document && !prefersReducedMotion()) {
+          (document as any).startViewTransition(() => {
+            appendQueryEntry();
+          });
+        } else {
+          appendQueryEntry();
+        }
+        setTimeout(() => {
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }, 100);
       }
-
-      setTimeout(() => {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }, 50);
 
       runComposingPipeline(currentSession!, text, mode, format, productContext);
     },
-    [activeProvider, activeSession, draftTitle, announce, appendEntry, runComposingPipeline, showToast]
+    [activeProvider, activeSession, draftTitle, view, announce, appendEntry, runComposingPipeline, showToast]
   );
 
   // Retry the most recent real run, if there was one.
@@ -849,7 +863,6 @@ export const App: React.FC = () => {
         className="sheet"
         id="sheet"
         ref={sheetRef}
-        style={{ paddingBottom: view === 'manuscript' ? '170px' : undefined }}
       >
         <LeaderLines sheetRef={sheetRef} />
 

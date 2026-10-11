@@ -5,6 +5,15 @@
    ===================================================================== */
 
 @font-face {
+  font-family: 'Maghfirea';
+  src: url('/fonts/Maghfirea.otf') format('opentype'),
+       url('/fonts/Maghfirea.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'PP Mori';
   src: url('/fonts/PPMori-Regular.woff') format('woff');
   font-weight: 400;
@@ -54,6 +63,7 @@
   --shadow:        var(--shadow-page);
 
   /* — Typography: Proposal 1 (The Studio Dossier) — */
+  --f-brand: 'Maghfirea', 'Cabinet Grotesk', serif;
   --f-disp: 'Cabinet Grotesk', 'PP Mori', system-ui, -apple-system, sans-serif;
   --f-text: 'PP Mori', 'Cabinet Grotesk', system-ui, -apple-system, sans-serif;
   --f-ui:   'Cabinet Grotesk', 'PP Mori', system-ui, -apple-system, sans-serif;
@@ -326,6 +336,7 @@ html::-webkit-scrollbar-thumb:hover {
    RUNNING HEAD (Masthead) — Bone base with Aubergine accent
    ===================================================================== */
 .rhead {
+  view-transition-name: rhead;
   position: fixed; top: 0; left: 0; right: 0; z-index: 200;
   height: 54px;
   background: var(--canvas);
@@ -335,13 +346,24 @@ html::-webkit-scrollbar-thumb:hover {
 .rhead-menu { display: none; color: var(--ink); }
 
 .rhead-brand {
-  font: 600 15px var(--f-disp);
-  letter-spacing: 0.02em;
+  font-family: var(--f-brand);
+  font-size: 21px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  line-height: 1;
   white-space: nowrap;
   color: var(--ink);
   display: flex;
   align-items: baseline;
   max-width: calc(50vw - 260px);
+}
+.kestrel-brand-wordmark {
+  font-family: var(--f-brand);
+  letter-spacing: 0.08em;
+  display: inline-block;
+  transform: scaleX(1.12);
+  transform-origin: left baseline;
+  margin-right: 4px;
 }
 .rhead-brand small {
   font: 500 8.5px var(--f-mono);
@@ -497,6 +519,7 @@ html::-webkit-scrollbar-thumb:hover {
    INDEX RAIL — Two Separate Sharp Floating Islands
    ===================================================================== */
 .rail {
+  view-transition-name: rail;
   position: fixed; top: 68px; bottom: 20px; left: 14px; z-index: 150;
   width: 50px;
   background: transparent;
@@ -1017,6 +1040,9 @@ html::-webkit-scrollbar-thumb:hover {
 /* =====================================================================
    MANUSCRIPT — Folio entries & marginalia
    ===================================================================== */
+.manuscript {
+  padding-bottom: 170px;
+}
 .entries { counter-reset: entry; }
 .entry {
   position: relative;
@@ -1671,13 +1697,21 @@ html::-webkit-scrollbar-thumb:hover {
 }
 
 /* =====================================================================
-   VIEW TRANSITIONS — The Bind (§9.1)
+   VIEW TRANSITIONS — Editorial Cross-Fade & Folio Stability
    ===================================================================== */
-::view-transition-old(root) { animation: none; }
-::view-transition-new(root) { animation: vt-rise 0.24s var(--ease-out-expo); }
-@keyframes vt-rise {
-  from { transform: translateY(14px); opacity: 0.4; }
-  to   { transform: translateY(0);    opacity: 1; }
+::view-transition-old(root) {
+  animation: vt-fade-out 0.18s var(--ease-in-out-soft) both;
+}
+::view-transition-new(root) {
+  animation: vt-fade-in 0.22s var(--ease-out-expo) both;
+}
+@keyframes vt-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* =====================================================================

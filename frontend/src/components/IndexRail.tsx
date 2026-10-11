@@ -132,7 +132,7 @@ export const IndexRail: React.FC<IndexRailProps> = ({
         </div>
 
         <span className="rail-spine" aria-hidden="true">
-          Kestrel — growth dossiers
+          <span className="kestrel-brand-wordmark">Kestrel</span> — growth dossiers
         </span>
         <span className="rail-protolabel" aria-hidden="true">
           research folio

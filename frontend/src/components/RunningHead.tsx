@@ -156,7 +156,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
       </button>
 
       <div className="rhead-brand">
-        Kestrel<small>growth research dossier, drawn from Lenny’s Podcast archive</small>
+        <span className="kestrel-brand-wordmark">Kestrel</span><small>growth research dossier, drawn from Lenny’s Podcast archive</small>
       </div>
 
       <div className="rhead-title">

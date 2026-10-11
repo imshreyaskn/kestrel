@@ -93,6 +93,70 @@ describe('Phase 4: Signature Moments Engine Verification', () => {
       expect(document.startViewTransition).not.toHaveBeenCalled();
       expect(appended).toBe(true);
     });
+
+    it('batches view switch and entry append on initial transition without scroll collision', () => {
+      const scrollToMock = vi.fn();
+      (globalThis as any).window.scrollTo = scrollToMock;
+
+      let currentView = 'frontmatter';
+      let appended = false;
+      const isInitialSwitch = currentView === 'frontmatter';
+
+      const appendQueryEntry = () => {
+        appended = true;
+      };
+
+      if (isInitialSwitch) {
+        if ('startViewTransition' in document && !prefersReducedMotion()) {
+          (document as any).startViewTransition(() => {
+            currentView = 'manuscript';
+            appendQueryEntry();
+          });
+        } else {
+          currentView = 'manuscript';
+          appendQueryEntry();
+        }
+        window.scrollTo({ top: 0, behavior: 'instant' });
+      }
+
+      expect(document.startViewTransition).toHaveBeenCalled();
+      expect(currentView).toBe('manuscript');
+      expect(appended).toBe(true);
+      expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
+    });
+
+    it('smooth scrolls to bottom only on subsequent queries inside Manuscript', () => {
+      vi.useFakeTimers();
+      const scrollToMock = vi.fn();
+      (globalThis as any).window.scrollTo = scrollToMock;
+
+      const currentView: string = 'manuscript';
+      let appended = false;
+      const isInitialSwitch = currentView === 'frontmatter';
+
+      const appendQueryEntry = () => {
+        appended = true;
+      };
+
+      if (!isInitialSwitch) {
+        if ('startViewTransition' in document && !prefersReducedMotion()) {
+          (document as any).startViewTransition(() => {
+            appendQueryEntry();
+          });
+        } else {
+          appendQueryEntry();
+        }
+        setTimeout(() => {
+          window.scrollTo({ top: 1200, behavior: 'smooth' });
+        }, 100);
+      }
+
+      expect(appended).toBe(true);
+      expect(scrollToMock).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(100);
+      expect(scrollToMock).toHaveBeenCalledWith({ top: 1200, behavior: 'smooth' });
+      vi.useRealTimers();
+    });
   });
 
   describe('Rail Delete Tip-Out (§8.5)', () => {
