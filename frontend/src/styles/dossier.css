@@ -698,10 +698,10 @@ html, body, * {
 
 .hero-h {
   font-family: var(--f-disp);
-  font-weight: 600;
+  font-weight: 500;
   font-size: var(--t-display);
   line-height: 0.98;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.022em;
   margin: 0;
   color: var(--ink);
 }
@@ -710,22 +710,32 @@ html, body, * {
 }
 .hero-h .w {
   display: inline-block;
-  font-weight: 600;
-  transition: font-weight 0.2s ease, color 0.25s ease, transform 0.25s var(--ease-spring);
+  font-weight: 500;
+  cursor: default;
+  transition:
+    font-weight 0.4s var(--ease-out-expo),
+    color 0.3s ease,
+    transform 0.35s var(--ease-spring),
+    letter-spacing 0.35s ease;
 }
 .hero-h .w:hover {
-  font-weight: 700;
+  font-weight: 800;
   color: var(--accent);
+  transform: translateY(-2px);
+  letter-spacing: -0.01em;
 }
-/* The signature accent word per page — heavier weight and accented color */
+/* The signature accent word per page — heavier weight and accented color with animated lift */
 .hero-h .wonk {
   font-style: normal;
   font-weight: 700;
   color: var(--accent);
+  letter-spacing: -0.015em;
 }
 .hero-h .w.wonk:hover {
-  font-weight: 800;
+  font-weight: 900;
   color: var(--accent-ink);
+  transform: translateY(-3px) scale(1.02);
+  letter-spacing: 0.01em;
 }
 .hero-h .star {
   font-style: normal;
