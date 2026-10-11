@@ -79,6 +79,21 @@ class GrowthBriefService:
         return result.scalars().first()
 
     @staticmethod
+    async def get_latest_for_session(
+        db: AsyncSession,
+        session_id: uuid.UUID,
+    ) -> GrowthBrief | None:
+        """Retrieve the latest growth brief created in a session."""
+        stmt = (
+            select(GrowthBrief)
+            .where(GrowthBrief.session_id == session_id)
+            .order_by(GrowthBrief.created_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    @staticmethod
     async def update_growth_brief(
         db: AsyncSession,
         brief_id: uuid.UUID,

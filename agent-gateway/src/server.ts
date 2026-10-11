@@ -89,6 +89,7 @@ const CLOUD_PROVIDER_META: Record<string, { providerId: string; api: string }> =
   anthropic: { providerId: "anthropic", api: "anthropic-messages" },
   openai: { providerId: "openai", api: "openai-responses" },
 };
+const OLLAMA_META = { providerId: "ollama", api: "openai-completions" };
 
 // ---------------------------------------------------------------------------
 // Request Validation Schema (IMPLEMENTATION_SPEC.md §6.6)
@@ -104,6 +105,8 @@ const GenerateRequestSchema = z.object({
     z.object({
       role: z.enum(["user", "assistant"]),
       content: z.string(),
+      provider: z.enum(["local", "cloud"]).optional(),
+      model_id: z.string().optional(),
     })
   ).default([]),
   current_user_message: z.string().min(1),
@@ -205,12 +208,19 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
           timestamp: Date.now(),
         });
       } else {
+        const histProvider = msg.provider || payload.provider;
+        const histModel = msg.model_id || payload.model_id;
+        const histMeta =
+          histProvider === "local"
+            ? OLLAMA_META
+            : (CLOUD_PROVIDER_META[payload.cloud_provider || "gemini"] || assistantTurnMeta);
+
         piMessages.push({
           role: "assistant",
           content: [{ type: "text", text: msg.content }],
-          api: assistantTurnMeta.api,
-          provider: assistantTurnMeta.providerId,
-          model: payload.model_id,
+          api: histMeta.api,
+          provider: histMeta.providerId,
+          model: histModel,
           timestamp: Date.now(),
           stopReason: "stop",
           usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },

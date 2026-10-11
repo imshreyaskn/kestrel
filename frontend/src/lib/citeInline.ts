@@ -20,30 +20,46 @@ export function buildCitations(
   messageId: string,
   records: CitationRecord[]
 ): Citation[] {
-  return (records || []).map((c, idx) => ({
-    id: `sn-${sessionId}-${messageId}-${c.evidence_id}`,
-    refIndex: idx + 1,
-    speaker: c.guest || 'Lenny’s Podcast guest',
-    episodeTitle: c.episode_title,
-    episodeUrl: c.episode_url || undefined,
-    quote: c.excerpt, // verbatim, read from the stored transcript chunk
-    provenanceStamp: `[${c.evidence_id}] ${c.supports || 'supporting passage'}`,
-    chunkId: c.chunk_id,
-  }));
+  return (records || [])
+    .map((c, idx) => {
+      const parsedNum = Number(c.evidence_id.replace(/\D/g, ''));
+      const num = Number.isFinite(parsedNum) && parsedNum > 0 ? parsedNum : (idx + 1);
+      return {
+        ...c,
+        num,
+      };
+    })
+    .sort((a, b) => a.num - b.num)
+    .map((c) => ({
+      id: `sn-${sessionId}-${messageId}-${c.evidence_id}`,
+      refIndex: c.num,
+      evidenceId: c.evidence_id,
+      speaker: c.guest || 'Lenny’s Podcast guest',
+      episodeTitle: c.episode_title,
+      episodeUrl: c.episode_url || undefined,
+      quote: c.excerpt, // verbatim, read from the stored transcript chunk
+      provenanceStamp: `[${c.evidence_id}] ${c.supports || 'supporting passage'}`,
+      chunkId: c.chunk_id,
+      retrievalRank: c.retrieval_rank ?? c.num,
+      rrfScore: c.rrf_score ?? undefined,
+      denseRank: c.dense_rank ?? undefined,
+      sparseRank: c.sparse_rank ?? undefined,
+    }));
 }
 
 // ---------------------------------------------------------------------------
-// Text segmentation: [E1] / [1] markers -> citation references
+// Text segmentation: [E1] markers -> citation references
 // ---------------------------------------------------------------------------
 export type TextSegment = string | { refIndex: number; evidenceId: string };
 
-const MARKER_RE = /\[(E\d+|\d+)\]/g;
+// Strictly match [E1] or multi-label clusters like [E1, E2].
+// Bare [1] is intentionally eliminated to avoid converting normal bracketed prose into false-positive beads (CIT6).
+const MARKER_RE = /\[(E\d+(?:\s*,\s*E\d+)*)\]/g;
 
 /**
- * Split a text run around citation markers. `E{n}` markers resolve by
- * evidence_id; plain `[n]` markers resolve by display refIndex. Unknown
- * markers stay as literal text (server-validated answers should never
- * produce them, but we never silently drop content).
+ * Split a text run around citation markers. Strict `[E{n}]` markers resolve by
+ * evidence_id number directly. Unknown markers stay as literal text (server-validated
+ * answers should never produce them, but we never silently drop content).
  */
 export function segmentTextWithCitations(text: string, citations: Citation[]): TextSegment[] {
   const segments: TextSegment[] = [];
@@ -64,15 +80,19 @@ export function segmentTextWithCitations(text: string, citations: Citation[]): T
     if (match.index > lastIndex) {
       pushText(text.substring(lastIndex, match.index));
     }
-    const token = match[1];
-    const cit = token.startsWith('E')
-      ? citations.find((c) => c.provenanceStamp.startsWith(`[${token}]`))
-      : citations.find((c) => c.refIndex === Number(token));
+    const rawTokens = match[1].split(',').map((t) => t.trim());
+    for (const token of rawTokens) {
+      const num = Number(token.slice(1));
+      const evidenceId = token;
+      const cit = citations.find(
+        (c) => c.refIndex === num || c.evidenceId === evidenceId || c.id.endsWith(`-${evidenceId}`)
+      );
 
-    if (cit) {
-      segments.push({ refIndex: cit.refIndex, evidenceId: token });
-    } else {
-      pushText(match[0]);
+      if (cit) {
+        segments.push({ refIndex: cit.refIndex, evidenceId });
+      } else {
+        pushText(`[${token}]`);
+      }
     }
     lastIndex = MARKER_RE.lastIndex;
   }
@@ -204,10 +224,12 @@ export function entriesFromHistory(sessionId: string, messages: MessageRecord[])
     const stamp = `Set in ${m.model_id || m.provider || 'the archive'} · ${
       m.provider || ''
     } — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified`;
+    const ansData = buildAnswerData(m.content, stamp);
+    const writingPath = m.metadata?.writing_path ? String(m.metadata.writing_path) : undefined;
     entries.push({
       id: m.id,
       kind: 'answer',
-      answerData: buildAnswerData(m.content, stamp),
+      answerData: { ...ansData, writingPath },
       citations,
       createdAt: m.created_at,
     });

@@ -98,6 +98,30 @@ async def test_gateway_client_connection_error():
 
 
 @pytest.mark.asyncio
+async def test_gateway_client_connect_timeout_raises_connection_error():
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("Connect timeout to gateway")
+
+    transport = httpx.MockTransport(mock_handler)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = AgentGatewayClient(
+            base_url="http://agent-gateway:8010",
+            internal_token="test-token",
+            http_client=http_client,
+        )
+        with pytest.raises(ConnectionError, match="Could not connect to agent gateway"):
+            await client.generate(
+                session_id="sess-456",
+                current_user_message="Hello",
+                mode="research",
+                provider="local",
+                model_id="qwen2.5:1.5b",
+                conversation_context=[],
+                evidence=[],
+            )
+
+
+@pytest.mark.asyncio
 async def test_gateway_client_typed_errors_and_stop_reason():
     from backend.app.agent_client.gateway_client import (
         GatewayConfigError,
@@ -200,4 +224,43 @@ async def test_gateway_client_typed_errors_and_stop_reason():
                 conversation_context=[],
                 evidence=[],
             )
+
+
+@pytest.mark.asyncio
+async def test_gateway_client_non_json_response_raises_runtime_error():
+    def handler_html(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html><body>502 Bad Gateway Proxy Error</body></html>")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_html)) as http_client:
+        client = AgentGatewayClient(http_client=http_client)
+        with pytest.raises(RuntimeError, match="Agent gateway returned non-JSON payload"):
+            await client.generate(
+                session_id="sess-1",
+                current_user_message="test",
+                mode="research",
+                provider="local",
+                model_id="qwen2.5:1.5b",
+                conversation_context=[],
+                evidence=[],
+            )
+
+
+@pytest.mark.asyncio
+async def test_gateway_client_non_dict_json_response_raises_runtime_error():
+    def handler_array(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="[1, 2, 3]")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_array)) as http_client:
+        client = AgentGatewayClient(http_client=http_client)
+        with pytest.raises(RuntimeError, match="invalid JSON structure"):
+            await client.generate(
+                session_id="sess-1",
+                current_user_message="test",
+                mode="research",
+                provider="local",
+                model_id="qwen2.5:1.5b",
+                conversation_context=[],
+                evidence=[],
+            )
+
 

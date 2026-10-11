@@ -24,7 +24,7 @@ export interface Citation {
   // the whole manuscript so leader lines and getElementById stay unambiguous
   // even when several answers in one session reuse evidence label E1.
   id: string;
-  refIndex: number; // sequential display number 1, 2, 3...
+  refIndex: number; // unified display number matching E-number and retrieval rank
   speaker: string;
   affiliation?: string;
   episodeTitle: string;
@@ -32,6 +32,11 @@ export interface Citation {
   quote: string; // verbatim excerpt read from the stored transcript chunk
   provenanceStamp: string; // e.g. "[E1] supporting passage"
   chunkId?: string;
+  evidenceId?: string;
+  retrievalRank?: number;
+  rrfScore?: number;
+  denseRank?: number;
+  sparseRank?: number;
 }
 
 export interface ArtifactData {
@@ -105,6 +110,7 @@ export interface ManuscriptEntry {
     }>;
     thinNotice?: string;
     stamp: string;
+    writingPath?: string;
   };
   noticeData?: {
     kick: string;

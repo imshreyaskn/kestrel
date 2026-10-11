@@ -62,7 +62,49 @@ def find_outermost_json_object(text: str) -> str | None:
                 if depth == 0:
                     return text[start_idx : idx + 1]
 
-    return None
+def try_repair_unclosed_json(text: str) -> str | None:
+    """
+    Attempts to repair syntactically unclosed JSON objects caused by model truncation
+    or omitted closing delimiters before code fences.
+    """
+    start_idx = text.find("{")
+    if start_idx == -1:
+        return None
+
+    in_string = False
+    escape = False
+    stack: list[str] = []
+
+    for idx in range(start_idx, len(text)):
+        char = text[idx]
+        if escape:
+            escape = False
+            continue
+        if char == "\\":
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if char in ("{", "["):
+                stack.append("}" if char == "{" else "]")
+            elif char in ("}", "]"):
+                if stack and stack[-1] == char:
+                    stack.pop()
+
+    suffix = ""
+    if in_string:
+        suffix += '"'
+    while stack:
+        suffix += stack.pop()
+
+    candidate = text[start_idx:] + suffix
+    try:
+        json.loads(candidate, strict=False)
+        return candidate
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def extract_json_payload(text: str) -> str:
@@ -71,7 +113,8 @@ def extract_json_payload(text: str) -> str:
     1. Outermost balanced '{...}' on cleaned text
     2. Greedy outermost code fence (handles nested fences inside JSON string values)
     3. Non-greedy code fences (if multiple code blocks exist)
-    4. Fallback to best unparsed candidate for detailed error reporting
+    4. Auto-closing repair for unclosed JSON objects / truncated fences
+    5. Fallback to best unparsed candidate for detailed error reporting
     """
     cleaned = clean_llm_text(text)
     if not cleaned:
@@ -113,6 +156,12 @@ def extract_json_payload(text: str) -> str:
             return cand
         except (json.JSONDecodeError, TypeError):
             continue
+
+    # 4. Auto-closing repair for unclosed JSON objects / truncated fences
+    for cand in candidates + [cleaned]:
+        repaired = try_repair_unclosed_json(cand)
+        if repaired:
+            return repaired
 
     # If no candidate parses cleanly, return the best candidate for diagnosis
     if outer_obj:

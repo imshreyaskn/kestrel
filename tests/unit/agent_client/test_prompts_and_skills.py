@@ -26,6 +26,10 @@ def test_runtime_skill_loader_loads_ship_30_for_30():
     assert skill.name == "ship-30-for-30"
     assert "1,250" in skill.purpose
     assert "Ship 30 for 30 Writing Skill" in skill.instructions
+    assert skill.metadata.get("min_model_tier") == "mid"
+    assert "Headline patterns" in skill.instructions
+    assert "Skeleton (fill, then vary)" in skill.instructions
+    assert "rebuild it as an essay" in skill.instructions
 
 
 def test_skill_loader_returns_none_for_missing_skill():
@@ -60,6 +64,17 @@ def test_format_evidence_block_with_items():
     assert "Casey Winters" in block
 
 
+def test_runtime_skill_loader_loads_document_craft():
+    skill = default_skill_loader.load_skill("document-craft")
+    assert skill is not None
+    assert skill.name == "document-craft"
+    assert "publication-grade" in skill.purpose
+    assert "Hard bans" in skill.instructions
+    assert "No emoji anywhere" in skill.instructions
+    assert "HTML/CSS rules" in skill.instructions
+    assert "CSS-only" in skill.instructions
+
+
 def test_build_system_prompt_for_all_modes():
     modes = ["research", "growth_brief", "essay", "artifact_markdown", "artifact_html"]
     for mode in modes:
@@ -76,9 +91,15 @@ def test_build_system_prompt_for_all_modes():
 
         if mode == "essay":
             assert "Ship 30 for 30" in prompt
+            assert "Hard bans" in prompt
+            assert "No emoji anywhere" in prompt
         elif mode == "growth_brief":
             assert "Growth Brief" in prompt
             assert "guardrail_metric" in prompt
+        elif mode in ("artifact_markdown", "artifact_html"):
+            assert "Document Craft" in prompt
+            assert "Hard bans" in prompt
+
 
 
 def test_build_system_prompt_includes_current_date():
@@ -132,4 +153,14 @@ def test_build_repair_system_prompt_targeted_guidance():
     )
     assert "Reason: JSON_PARSE." in p_json
     assert "Return ONLY one corrected JSON object" in p_json
+
+    # 5. Invalid writing path
+    p_path = build_repair_system_prompt(
+        mode="essay",
+        evidence_block="evidence",
+        reason_code="INVALID_WRITING_PATH",
+        detail="philosophical",
+    )
+    assert "Reason: INVALID_WRITING_PATH." in p_path
+    assert "writing_path must be one of: actionable, analytical, aspirational, anthropological" in p_path
 

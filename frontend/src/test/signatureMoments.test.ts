@@ -259,4 +259,19 @@ describe('Phase 4: Signature Moments Engine Verification', () => {
       expect(anim).toBeNull();
     });
   });
+
+  describe('Deliverable Transitions & Composer Prefill', () => {
+    it('contextualizes the essay prompt with previous query text when available', () => {
+      const prevQuery = 'How does Superhuman measure PMF?';
+      const prompt = `Write a Ship 30-style essay (~1,250 words) based on our research into “${prevQuery}”. Ground every claim in this session’s sources.`;
+      expect(prompt).toContain(prevQuery);
+      expect(prompt).toContain('~1,250 words');
+    });
+
+    it('falls back to default activation theme when no previous query exists', () => {
+      const prompt = 'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.';
+      expect(prompt).toContain('activation improves');
+    });
+  });
 });
+

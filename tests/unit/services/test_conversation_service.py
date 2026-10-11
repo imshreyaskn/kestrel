@@ -14,7 +14,7 @@ import pytest
 
 from backend.app.agent_client.gateway_client import GatewayGenerationResult
 from backend.app.core.config import settings
-from backend.app.models.entities import ChatSession, Message
+from backend.app.models.entities import ChatSession, Message, MessageSource
 from backend.app.retrieval.hybrid_search import EvidenceItem, RetrievalResult
 from backend.app.services.conversation_service import (
     ConversationService,
@@ -512,7 +512,25 @@ async def test_conversation_service_marks_cancelled_on_disconnect():
     mock_sess_res.scalars.return_value.first.return_value = session_obj
     mock_hist_res = MagicMock()
     mock_hist_res.scalars.return_value.all.return_value = []
-    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+    
+    call_count = 0
+    def execute_mock(stmt):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return mock_sess_res
+        if call_count == 2:
+            return mock_hist_res
+        asst = next(
+            (c.args[0] for c in mock_db.add.call_args_list if getattr(c.args[0], "role", None) == "assistant"),
+            None,
+        )
+        asst_res = MagicMock()
+        asst_res.scalar_one_or_none.return_value = asst
+        asst_res.scalars.return_value.first.return_value = asst
+        return asst_res
+
+    mock_db.execute.side_effect = execute_mock
 
     mock_retrieval = AsyncMock()
     evidence_item = EvidenceItem(
@@ -729,5 +747,282 @@ def test_clean_artifact_digest_strips_html_boilerplate():
     md_content = "# B2B Growth Strategy\n\nKey takeaways from the discussion."
     digest_md = _clean_artifact_digest(md_content, "markdown")
     assert digest_md == "# B2B Growth Strategy Key takeaways from the discussion."
+
+
+def test_build_retrieval_query_includes_assistant_context_when_available():
+    from backend.app.services.conversation_service import build_retrieval_query
+
+    prior_user = "What frameworks exist for growth?"
+    prior_assistant = "Elena Verna presents the product-led sales loop [E1] for B2B freemium models."
+
+    # When query is anaphoric and prior_assistant is given, context includes assistant's framework title
+    expanded = build_retrieval_query("tell me more about it", prior_user, prior_assistant)
+    assert "Elena Verna presents the product-led sales loop" in expanded
+    assert "[E1]" not in expanded  # Strips citation markers from query expansion
+    assert "tell me more about it" in expanded
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_recovers_failed_status_with_rollback():
+    """Adversarial test: when an operational failure occurs during processing,
+    the service MUST roll back the aborted transaction, query the message,
+    and safely commit status = 'failed' without crashing on inactive transaction."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+
+    session_obj = ChatSession(id=session_id, user_id=user_id, title="Test Chat")
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+
+    # Mock assistant message re-query result after rollback
+    mock_asst_msg = Message(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        role="assistant",
+        status="pending",
+    )
+    mock_reselect_res = MagicMock()
+    mock_reselect_res.scalar_one_or_none.return_value = mock_asst_msg
+
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res, mock_reselect_res]
+
+    # Simulate database retrieval failure
+    mock_retrieval = AsyncMock()
+    mock_retrieval.search.side_effect = SQLAlchemyError("Database connection lost")
+
+    svc = ConversationService(retrieval_service=mock_retrieval)
+
+    events = []
+    async for event in svc.process_message_stream(
+        db=mock_db,
+        session_id=session_id,
+        user_id=user_id,
+        content="What is PLG?",
+    ):
+        events.append(event)
+
+    # 1. db.rollback() must have been called to clear the aborted SQL transaction
+    assert mock_db.rollback.called
+    # 2. Assistant message must be transitioned to 'failed'
+    added_asst = next(c.args[0] for c in mock_db.add.call_args_list if getattr(c.args[0], "role", None) == "assistant")
+    assert added_asst.status == "failed"
+    assert added_asst.error_code == "GENERATION_FAILED"
+    # 3. Status must have been safely committed
+    assert mock_db.commit.called
+    # 4. Stream emitted the classified error envelope
+    assert any(e["event"] == "error" for e in events)
+    err_event = next(e for e in events if e["event"] == "error")
+    assert err_event["data"]["error"]["code"] == "GENERATION_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_deduplicates_duplicate_chunks_in_message_sources():
+    """Adversarial test: when multiple citations point to the same chunk ID
+    or duplicate citations are emitted, MessageSource join table rows MUST be
+    deduplicated on chunk_id so PrimaryKeyConstraint('message_id', 'chunk_id')
+    is never violated, while preserving discrete citations in the response."""
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    shared_chunk_id = uuid.uuid4()
+    source_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+
+    session_obj = ChatSession(id=session_id, user_id=user_id, title="Test Chat")
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    # Two distinct evidence items pointing to the same underlying chunk
+    ev1 = EvidenceItem(
+        evidence_id="E1",
+        chunk_id=shared_chunk_id,
+        source_id=source_id,
+        source_key="episodes/x/transcript.md",
+        chunk_index=0,
+        episode_title="Episode 1",
+        guest="Elena",
+        episode_url=None,
+        publish_date=None,
+        excerpt="Elena passage.",
+        char_start=0,
+        char_end=20,
+        rrf_score=0.05,
+        dense_rank=1,
+        sparse_rank=1,
+    )
+    ev2 = EvidenceItem(
+        evidence_id="E2",
+        chunk_id=shared_chunk_id,
+        source_id=source_id,
+        source_key="episodes/x/transcript.md",
+        chunk_index=0,
+        episode_title="Episode 1",
+        guest="Elena",
+        episode_url=None,
+        publish_date=None,
+        excerpt="Elena passage.",
+        char_start=21,
+        char_end=40,
+        rrf_score=0.04,
+        dense_rank=2,
+        sparse_rank=2,
+    )
+    mock_retrieval = AsyncMock()
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[ev1, ev2],
+        insufficient_evidence=False,
+        query="retention",
+    )
+
+    # Gateway returns citations referencing E1, E2, and duplicate E1
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.return_value = GatewayGenerationResult(
+        request_id="req-123",
+        session_id=str(session_id),
+        provider="local",
+        model_id="qwen2.5:1.5b",
+        raw_response=json.dumps({
+            "mode": "research",
+            "answer_markdown": "Retention findings [E1][E2].",
+            "citations": [
+                {"evidence_id": "E1", "supports": "First claim"},
+                {"evidence_id": "E2", "supports": "Second claim"},
+                {"evidence_id": "E1", "supports": "Duplicate claim"},
+            ],
+            "scope": "in_scope",
+            "insufficient_evidence": False,
+        }),
+        latency_ms=25.0,
+        usage={"prompt_tokens": 100, "completion_tokens": 50},
+        stop_reason="stop",
+    )
+
+    svc = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    events = []
+    async for event in svc.process_message_stream(
+        db=mock_db,
+        session_id=session_id,
+        user_id=user_id,
+        content="How to improve retention?",
+    ):
+        events.append(event)
+
+    completed_event = next(e for e in events if e["event"] == "completed")
+    citations_emitted = completed_event["data"]["citations"]
+    # Discrete evidence IDs E1 and E2 were both yielded
+    assert [c["evidence_id"] for c in citations_emitted] == ["E1", "E2"]
+
+    # Verify MessageSource instances added to db
+    added_sources = [c.args[0] for c in mock_db.add.call_args_list if isinstance(c.args[0], MessageSource)]
+    # Exactly ONE row inserted for shared_chunk_id, avoiding duplicate primary key violation!
+    assert len(added_sources) == 1
+    assert added_sources[0].chunk_id == shared_chunk_id
+    assert added_sources[0].evidence_id == "E1"
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_stream_essay_flow_stamps_metadata():
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    source_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+
+    session_obj = ChatSession(id=session_id, user_id=user_id, title="Essay Chat")
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    mock_retrieval = AsyncMock()
+    evidence_item = EvidenceItem(
+        evidence_id="E1",
+        chunk_id=chunk_id,
+        source_id=source_id,
+        source_key="episodes/elena-verna/transcript.md",
+        chunk_index=0,
+        episode_title="Elena Verna on PLG",
+        guest="Elena Verna",
+        episode_url="https://youtube.com/watch?v=123",
+        publish_date="2023-05-01",
+        excerpt="Product led growth begins with user value.",
+        char_start=0,
+        char_end=50,
+        rrf_score=0.016,
+        dense_rank=1,
+        sparse_rank=1,
+    )
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[evidence_item],
+        insufficient_evidence=False,
+        query="Write an essay on PLG",
+    )
+
+    essay_text = ("Product led growth transforms acquisition into retention [E1]. " + ("growth " * 1220)).strip()
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.return_value = GatewayGenerationResult(
+        request_id="req-essay",
+        session_id=str(session_id),
+        provider="local",
+        model_id="qwen2.5:1.5b",
+        raw_response=json.dumps({
+            "title": "PLG Playbook",
+            "essay_markdown": essay_text,
+            "approximate_word_count": 1230,
+            "writing_path": "analytical",
+            "citations": [{"evidence_id": "E1", "supports": "PLG definition"}],
+            "insufficient_evidence": False,
+        }),
+        latency_ms=300.0,
+    )
+
+    service = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    events = []
+    async for event in service.process_message_stream(
+        db=mock_db,
+        session_id=session_id,
+        user_id=user_id,
+        content="Write an essay on PLG",
+        mode="essay",
+        provider="local",
+    ):
+        events.append(event)
+
+    completed_event = next(e for e in events if e["event"] == "completed")
+    msg_data = completed_event["data"]["message"]
+    assert msg_data["status"] == "complete"
+    assert "metadata" in msg_data
+    metadata = msg_data["metadata"]
+    assert metadata["skill"] == "ship-30-for-30@v1"
+    assert metadata["writing_path"] == "analytical"
+    assert "evidence_rrf_scores" in metadata
+
+
 
 

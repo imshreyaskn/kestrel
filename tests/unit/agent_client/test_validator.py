@@ -10,6 +10,7 @@ import pytest
 from backend.app.agent_client.validator import (
     ESSAY_MAX_WORDS,
     ESSAY_MIN_WORDS,
+    AgentOutputError,
     EssayLengthError,
     ValidatedArtifactResponse,
     ValidatedEssayResponse,
@@ -326,6 +327,41 @@ def test_validate_artifact_rejects_empty_content():
     assert "Artifact content must not be empty" in str(exc_info.value)
 
 
+def test_validate_artifact_rejects_empty_title():
+    raw_llm = json.dumps({
+        "title": "   ",
+        "content": "# Valid Content\nProse here.",
+        "kind": "markdown",
+    })
+    with pytest.raises(StructuredExtractionError) as exc_info:
+        validate_agent_response(raw_llm, mode="artifact_markdown", valid_evidence_ids=set())
+    assert "Artifact title must not be empty" in str(exc_info.value)
+
+
+def test_validate_artifact_rejects_emoji_styling():
+    # 1. Emoji in content
+    raw_llm_content_emoji = json.dumps({
+        "title": "Clean Title",
+        "content": "# Executive Brief\nHere is growth advice 🚀 for the team.",
+        "kind": "markdown",
+    })
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(raw_llm_content_emoji, mode="artifact_markdown", valid_evidence_ids=set())
+    assert exc_info.value.reason_code == "ARTIFACT_STYLE"
+    assert "emoji" in exc_info.value.detail
+
+    # 2. Emoji in title
+    raw_llm_title_emoji = json.dumps({
+        "title": "Growth Playbook ✨",
+        "content": "# Executive Brief\nHere is growth advice for the team.",
+        "kind": "markdown",
+    })
+    with pytest.raises(AgentOutputError) as exc_info2:
+        validate_agent_response(raw_llm_title_emoji, mode="artifact_markdown", valid_evidence_ids=set())
+    assert exc_info2.value.reason_code == "ARTIFACT_STYLE"
+    assert "emoji" in exc_info2.value.detail
+
+
 def test_validate_detects_stop_reason_truncation():
     from backend.app.agent_client.validator import AgentOutputError
 
@@ -486,5 +522,83 @@ def test_reconcile_inline_labels_auto_completes_and_sorts():
     assert completed[0].evidence_id == "E1"
     assert completed[1].evidence_id == "E3"
     assert completed[1].supports == "Rank 3 item"
+
+
+def test_reconcile_inline_labels_adversarial_cases():
+    from backend.app.agent_client.validator import reconcile_inline_labels
+
+    valid_ids = {"E1", "E2", "E3"}
+
+    # 1. Lowercase [e1] and mixed-case [e2, E3] are normalized to uppercase [E1] and [E2][E3]
+    text1 = "First point [e1] and compound [e2, E3]."
+    cleaned1, completed1, dropped1 = reconcile_inline_labels(
+        text=text1, citations=[], valid_ids=valid_ids, strict=False
+    )
+    assert "[E1]" in cleaned1
+    assert "[e1]" not in cleaned1
+    assert "[E2][E3]" in cleaned1
+    assert [c.evidence_id for c in completed1] == ["E1", "E2", "E3"]
+    assert dropped1 == []
+
+    # 2. Duplicate citations within the same bracket [E1, E1, E1] deduplicate
+    text2 = "Repeated citations [E1, E1, E1]."
+    cleaned2, completed2, _ = reconcile_inline_labels(
+        text=text2, citations=[], valid_ids=valid_ids, strict=False
+    )
+    assert cleaned2 == "Repeated citations [E1]."
+
+    # 3. Stripping invalid citation cleans up orphan whitespace before punctuation
+    text3 = "This statement is true [E99]. Next statement [E88]!"
+    cleaned3, _, dropped3 = reconcile_inline_labels(
+        text=text3, citations=[], valid_ids=valid_ids, strict=False
+    )
+    assert cleaned3 == "This statement is true. Next statement!"
+    assert set(dropped3) == {"E99", "E88"}
+
+    # 4. Repeated invalid citations [E99, E99] deduplicate in invalid dropped list
+    text4 = "Double phantom [E99, E99]."
+    cleaned4, _, dropped4 = reconcile_inline_labels(
+        text=text4, citations=[], valid_ids=valid_ids, strict=False
+    )
+    assert cleaned4 == "Double phantom."
+    assert dropped4 == ["E99"]
+
+    # 5. Non-evidence bracketed prose remains uncorrupted
+    text5 = "See index array[0] and year [2024]."
+    cleaned5, _, _ = reconcile_inline_labels(
+        text=text5, citations=[], valid_ids=valid_ids, strict=False
+    )
+    assert cleaned5 == "See index array[0] and year [2024]."
+
+
+def test_validate_essay_valid_writing_paths():
+    for path in ["actionable", "analytical", "aspirational", "anthropological", "ANALYTICAL", "Aspirational "]:
+        raw_llm = json.dumps({
+            "title": "Path Essay",
+            "essay_markdown": "word " * 1200,
+            "approximate_word_count": 1200,
+            "writing_path": path,
+            "citations": [],
+            "insufficient_evidence": False,
+        })
+        res = validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
+        assert isinstance(res, ValidatedEssayResponse)
+        assert res.writing_path == path.strip().lower()
+
+
+def test_validate_essay_rejects_invalid_writing_path():
+    raw_llm = json.dumps({
+        "title": "Invalid Path Essay",
+        "essay_markdown": "word " * 1200,
+        "approximate_word_count": 1200,
+        "writing_path": "philosophical",
+        "citations": [],
+        "insufficient_evidence": False,
+    })
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
+    assert exc_info.value.reason_code == "INVALID_WRITING_PATH"
+    assert "writing_path must be one of" in exc_info.value.detail
+
 
 

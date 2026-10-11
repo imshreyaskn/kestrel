@@ -30,6 +30,7 @@ from backend.app.agent_client.prompts import (
     build_system_prompt,
     format_evidence_block,
 )
+from backend.app.agent_client.skill_loader import default_skill_loader
 from backend.app.agent_client.validator import (
     AgentOutputError,
     EssayLengthError,
@@ -102,13 +103,20 @@ def _clean_artifact_digest(content: str, kind: str) -> str:
     return (text[:600] + "…") if len(text) > 600 else text
 
 
-def build_retrieval_query(current: str, prior_user: str | None) -> str:
-    """Expand short or anaphoric follow-up queries using the prior user turn (Finding B3)."""
+def build_retrieval_query(
+    current: str, prior_user: str | None, prior_assistant: str | None = None
+) -> str:
+    """Expand short or anaphoric follow-up queries using prior context (Finding B3)."""
     q = current.strip()
     words = q.split()
     if _CONVERSATIONAL_QUERY_RE.match(q):
         return q
     if prior_user and (len(words) < 6 or _FOLLOWUP_RE.search(q)):
+        if prior_assistant:
+            cleaned_asst = _CITATION_MARKER_RE.sub("", prior_assistant).strip()
+            first_line = cleaned_asst.split("\n")[0].strip()
+            if first_line and len(first_line) > 10:
+                return f"{prior_user.strip()} | {first_line[:140]}\n{q}"
         return f"{prior_user.strip()}\n{q}"
     return q
 
@@ -365,111 +373,116 @@ class ConversationService:
             }
             return
 
-        # -------------------------------------------------------------
-        # STAGE 1: LOADING CONTEXT
-        # -------------------------------------------------------------
-        yield {
-            "event": "stage",
-            "data": {"stage": "loading_context", "label": "Loading session context..."},
-        }
-
-        # 1. Enforce user ownership of session
-        session = await SessionService.get_session(db, session_id, user_id)
-        if not session:
+        assistant_message: Message | None = None
+        try:
+            # -------------------------------------------------------------
+            # STAGE 1: LOADING CONTEXT
+            # -------------------------------------------------------------
             yield {
-                "event": "error",
+                "event": "stage",
+                "data": {"stage": "loading_context", "label": "Loading session context..."},
+            }
+
+            # 1. Enforce user ownership of session
+            session = await SessionService.get_session(db, session_id, user_id)
+            if not session:
+                yield {
+                    "event": "error",
+                    "data": {
+                        "error": {
+                            "code": "NOT_FOUND",
+                            "message": f"Session {session_id} not found or unauthorized",
+                            "retryable": False,
+                            "request_id": run_id,
+                        }
+                    },
+                }
+                return
+
+            # 2. Persist user message. The assistant message is timestamped one
+            # microsecond later so chronological ordering of the pair is
+            # deterministic (created_at is otherwise identical for both rows).
+            user_message = Message(
+                id=uuid.uuid4(),
+                session_id=session_id,
+                role="user",
+                content=content.strip(),
+                status="complete",
+                workflow_mode=mode,
+                mode=mode,
+                provider=provider,
+                model_id=effective_model_id,
+                created_at=now,
+                completed_at=now,
+            )
+            db.add(user_message)
+
+            # 3. Insert pending assistant message
+            assistant_message = Message(
+                id=uuid.uuid4(),
+                session_id=session_id,
+                role="assistant",
+                content="",
+                status="pending",
+                workflow_mode=mode,
+                mode=mode,
+                provider=provider,
+                model_id=effective_model_id,
+                created_at=now + datetime.timedelta(microseconds=1),
+            )
+            db.add(assistant_message)
+            await db.commit()
+            await db.refresh(assistant_message)
+
+            yield {
+                "event": "run_started",
                 "data": {
-                    "error": {
-                        "code": "NOT_FOUND",
-                        "message": f"Session {session_id} not found or unauthorized",
-                        "retryable": False,
-                        "request_id": run_id,
-                    }
+                    "run_id": run_id,
+                    "message_id": str(assistant_message.id),
+                    "session_id": str(session_id),
                 },
             }
-            return
 
-        # 2. Persist user message. The assistant message is timestamped one
-        # microsecond later so chronological ordering of the pair is
-        # deterministic (created_at is otherwise identical for both rows).
-        user_message = Message(
-            session_id=session_id,
-            role="user",
-            content=content.strip(),
-            status="complete",
-            workflow_mode=mode,
-            mode=mode,
-            provider=provider,
-            model_id=effective_model_id,
-            created_at=now,
-            completed_at=now,
-        )
-        db.add(user_message)
-
-        # 3. Insert pending assistant message
-        assistant_message = Message(
-            session_id=session_id,
-            role="assistant",
-            content="",
-            status="pending",
-            workflow_mode=mode,
-            mode=mode,
-            provider=provider,
-            model_id=effective_model_id,
-            created_at=now + datetime.timedelta(microseconds=1),
-        )
-        db.add(assistant_message)
-        await db.commit()
-        await db.refresh(assistant_message)
-
-        yield {
-            "event": "run_started",
-            "data": {
-                "run_id": run_id,
-                "message_id": str(assistant_message.id),
-                "session_id": str(session_id),
-            },
-        }
-
-        # 4. Fetch bounded conversation history (up to MAX_CONTEXT_MESSAGES).
-        # The just-inserted user message is excluded: it is passed to the
-        # gateway separately as current_user_message (spec §6.6), so
-        # including it here would duplicate it in the model prompt.
-        stmt = (
-            select(Message)
-            .where(
-                Message.session_id == session_id,
-                Message.status == "complete",
-                Message.id != assistant_message.id,
-                Message.id != user_message.id,
+            # 4. Fetch bounded conversation history (up to MAX_CONTEXT_MESSAGES).
+            # The just-inserted user message is excluded: it is passed to the
+            # gateway separately as current_user_message (spec §6.6), so
+            # including it here would duplicate it in the model prompt.
+            stmt = (
+                select(Message)
+                .where(
+                    Message.session_id == session_id,
+                    Message.status == "complete",
+                    Message.id != assistant_message.id,
+                    Message.id != user_message.id,
+                )
+                .order_by(desc(Message.created_at))
+                .limit(settings.MAX_CONTEXT_MESSAGES)
             )
-            .order_by(desc(Message.created_at))
-            .limit(settings.MAX_CONTEXT_MESSAGES)
-        )
-        history_result = await db.execute(stmt)
-        prior_messages = list(reversed(history_result.scalars().all()))
+            history_result = await db.execute(stmt)
+            prior_messages = list(reversed(history_result.scalars().all()))
 
-        # Budget history to avoid silent context truncation (Finding B1 & G4)
-        history_budget = (
-            settings.HISTORY_TOKEN_BUDGET_LOCAL
-            if provider == "local"
-            else settings.HISTORY_TOKEN_BUDGET_CLOUD
-        )
-        prior_messages = _trim_history_to_budget(prior_messages, history_budget)
+            # Budget history to avoid silent context truncation (Finding B1 & G4)
+            history_budget = (
+                settings.HISTORY_TOKEN_BUDGET_LOCAL
+                if provider == "local"
+                else settings.HISTORY_TOKEN_BUDGET_CLOUD
+            )
+            prior_messages = _trim_history_to_budget(prior_messages, history_budget)
 
-        conversation_context = [
-            {
-                "role": m.role,
-                "content": (
-                    _CITATION_MARKER_RE.sub("[source]", m.content).strip()
-                    if m.role == "assistant" and m.content
-                    else m.content
-                ),
-            }
-            for m in prior_messages
-        ]
+            conversation_context = [
+                {
+                    "role": m.role,
+                    "content": (
+                        _CITATION_MARKER_RE.sub("[source]", m.content).strip()
+                        if m.role == "assistant" and m.content
+                        else m.content
+                    ),
+                    "provider": m.provider,
+                    "model_id": m.model_id,
+                }
+                for m in prior_messages
+            ]
 
-        try:
             # -------------------------------------------------------------
             # STAGE 2: RETRIEVING
             # -------------------------------------------------------------
@@ -486,7 +499,11 @@ class ConversationService:
                 (m.content for m in reversed(prior_messages) if m.role == "user"),
                 None,
             )
-            retrieval_query = build_retrieval_query(content, prior_user)
+            prior_assistant = next(
+                (m.content for m in reversed(prior_messages) if m.role == "assistant"),
+                None,
+            )
+            retrieval_query = build_retrieval_query(content, prior_user, prior_assistant)
             logger.debug(
                 "Run %s: retrieval query: %r (original: %r)",
                 run_id,
@@ -720,6 +737,11 @@ class ConversationService:
                     f"Created {validated.kind.upper()} artifact: **{validated.title}**\n"
                     f"[content digest] {digest}"
                 )
+                latest_brief = await GrowthBriefService.get_latest_for_session(
+                    db, session_id
+                )
+                linked_brief_id = latest_brief.id if latest_brief else None
+
                 artifact = await ArtifactService.create_artifact(
                     db=db,
                     session_id=session_id,
@@ -727,8 +749,11 @@ class ConversationService:
                     title=validated.title,
                     content=validated.content,
                     source_message_id=assistant_message.id,
+                    growth_brief_id=linked_brief_id,
                 )
                 artifact_id = artifact.id
+                if linked_brief_id:
+                    growth_brief_id = linked_brief_id
 
             else:  # ValidatedResearchResponse
                 assistant_message.content = validated.answer_markdown
@@ -744,12 +769,28 @@ class ConversationService:
                     e.evidence_id: e.rrf_score for e in evidence_items
                 }
             }
+            if isinstance(validated, ValidatedEssayResponse):
+                skill_obj = default_skill_loader.load_skill("ship-30-for-30")
+                skill_ver = (
+                    f"ship-30-for-30@v{skill_obj.version}"
+                    if skill_obj
+                    else "ship-30-for-30@v1"
+                )
+                assistant_message.metadata_["skill"] = skill_ver
+                assistant_message.metadata_["writing_path"] = validated.writing_path
+
 
             # Persist message_sources join table records for validated citations.
             # retrieval_rank is the ordinal position in the final fused
             # evidence ranking for this run (CIT4).
             citation_payloads: list[dict[str, Any]] = []
+            seen_chunks: set[uuid.UUID] = set()
+            seen_eids: set[str] = set()
             for cit in getattr(validated, "citations", []):
+                if cit.evidence_id in seen_eids:
+                    continue
+                seen_eids.add(cit.evidence_id)
+
                 ev = evidence_map.get(cit.evidence_id)
                 if ev and ev.chunk_id:
                     ret_rank = (
@@ -757,16 +798,19 @@ class ConversationService:
                         if cit.evidence_id.startswith("E") and cit.evidence_id[1:].isdigit()
                         else (len(citation_payloads) + 1)
                     )
-                    ms = MessageSource(
-                        message_id=assistant_message.id,
-                        chunk_id=ev.chunk_id,
-                        evidence_id=cit.evidence_id,
-                        supports=cit.supports or "",
-                        retrieval_rank=ret_rank,
-                        semantic_score=None,
-                        keyword_score=None,
-                    )
-                    db.add(ms)
+                    # Respect PrimaryKeyConstraint("message_id", "chunk_id")
+                    if ev.chunk_id not in seen_chunks:
+                        seen_chunks.add(ev.chunk_id)
+                        ms = MessageSource(
+                            message_id=assistant_message.id,
+                            chunk_id=ev.chunk_id,
+                            evidence_id=cit.evidence_id,
+                            supports=cit.supports or "",
+                            retrieval_rank=ret_rank,
+                            semantic_score=None,
+                            keyword_score=None,
+                        )
+                        db.add(ms)
 
                     citation_payloads.append(
                         {
@@ -820,6 +864,7 @@ class ConversationService:
                         "completed_at": assistant_message.completed_at.isoformat()
                         if assistant_message.completed_at
                         else None,
+                        "metadata": assistant_message.metadata_,
                     },
                     "citations": citation_payloads,
                     "insufficient_evidence": getattr(
@@ -838,19 +883,21 @@ class ConversationService:
             # No partial draft is persisted as a complete answer: the pending
             # assistant row is closed as cancelled with no generated content.
             try:
-                assistant_message.status = "cancelled"
-                assistant_message.error_code = "CANCELLED"
-                await db.commit()
-                logger.info(
-                    "Run %s cancelled for session %s; assistant message %s marked cancelled",
-                    run_id,
-                    session_id,
-                    assistant_message.id,
-                )
+                await db.rollback()
+                if assistant_message is not None:
+                    assistant_message.status = "cancelled"
+                    assistant_message.error_code = "CANCELLED"
+                    db.add(assistant_message)
+                    await db.commit()
+                    logger.info(
+                        "Run %s cancelled for session %s; assistant message %s marked cancelled",
+                        run_id,
+                        session_id,
+                        assistant_message.id,
+                    )
             except Exception:  # noqa: BLE001
                 logger.exception(
-                    "Failed to mark assistant message %s as cancelled for session %s",
-                    assistant_message.id,
+                    "Failed to mark assistant message as cancelled for session %s",
                     session_id,
                 )
             raise
@@ -867,13 +914,15 @@ class ConversationService:
                 exc,
             )
             try:
-                assistant_message.status = "failed"
-                assistant_message.error_code = code
-                await db.commit()
+                await db.rollback()
+                if assistant_message is not None:
+                    assistant_message.status = "failed"
+                    assistant_message.error_code = code
+                    db.add(assistant_message)
+                    await db.commit()
             except Exception:  # noqa: BLE001
                 logger.exception(
-                    "Failed to persist failed status for assistant message %s",
-                    assistant_message.id,
+                    "Failed to persist failed status for assistant message",
                 )
 
             yield {

@@ -199,7 +199,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
 
       <div style={{ position: 'relative' }} ref={colophonRef}>
         <button
-          className="colobtn"
+          className={`colobtn${isComposing ? ' is-composing' : ''}`}
           id="coloBtn"
           aria-haspopup="dialog"
           aria-expanded={isColophonOpen}
@@ -208,10 +208,15 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
             setIsColophonOpen(!isColophonOpen);
           }}
         >
-          <span
-            className={`dot${isComposing ? ' composing' : ''}${currentProvider?.status === 'offline' ? ' offline' : ''}`}
+          <svg
+            className={`agent-icon${isComposing ? ' composing' : ''}${currentProvider?.status === 'offline' ? ' offline' : ''}`}
+            viewBox="0 0 16 16"
+            fill="currentColor"
             aria-hidden="true"
-          />
+          >
+            <path d="M8 1.5C8 4.8 5.2 7.5 1.8 7.5C5.2 7.5 8 10.2 8 13.5C8 10.2 10.8 7.5 14.2 7.5C10.8 7.5 8 4.8 8 1.5Z" />
+            <path d="M13.5 2C13.5 3 12.5 3.8 11.5 3.8C12.5 3.8 13.5 4.6 13.5 5.6C13.5 4.6 14.5 3.8 15.5 3.8C14.5 3.8 13.5 3 13.5 2Z" opacity="0.8" />
+          </svg>
           <span id="coloLabel">
             Set in {currentProvider?.model || 'qwen2.5:1.5b'} · {currentProvider?.name.toLowerCase() || 'local'}
           </span>
@@ -258,17 +263,14 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
                 }}
               >
                 <span
-                  className="dot"
+                  className={`colo-mark ${isSelected ? 'on' : ''}`}
                   aria-hidden="true"
-                  style={{
-                    background: isSelected ? 'var(--success)' : 'var(--faint)',
-                  }}
-                ></span>
-                <span>
+                />
+                <div className="colo-info">
                   <span className="colo-name">{p.name}</span>
                   <span className="colo-model">{p.model}</span>
-                </span>
-                <span className="colo-state">{isSelected ? 'Setting' : 'Switch'}</span>
+                </div>
+                <span className="colo-state">{isSelected ? 'Active' : 'Switch'}</span>
               </button>
             );
           })}
@@ -276,9 +278,6 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
           <p className="colo-note">
             Kestrel never switches providers on its own — if the local model is unreachable,
             it asks you first.
-          </p>
-          <p className="stamp colo-sync">
-            transcript archive · every citation maps to a stored chunk
           </p>
         </div>
       </div>

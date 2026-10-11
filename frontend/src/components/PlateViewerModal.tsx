@@ -24,6 +24,8 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview');
   const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const downloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -38,17 +40,43 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
           }
         });
       }
+    } else {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      setIsClosing(false);
     }
+
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      if (downloadTimerRef.current) {
+        clearTimeout(downloadTimerRef.current);
+        downloadTimerRef.current = null;
+      }
+    };
   }, [isOpen, originRect]);
 
   const requestClose = useCallback(() => {
     if (prefersReducedMotion() || isClosing) {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      setIsClosing(false);
       onClose();
       return;
     }
     setIsClosing(true);
-    setTimeout(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+    closeTimerRef.current = setTimeout(() => {
       setIsClosing(false);
+      closeTimerRef.current = null;
       onClose();
     }, 240);
   }, [onClose, isClosing]);
@@ -76,7 +104,13 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    if (downloadTimerRef.current) {
+      clearTimeout(downloadTimerRef.current);
+    }
+    downloadTimerRef.current = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      downloadTimerRef.current = null;
+    }, 4000);
     onCopySuccess(`Downloaded ${artifact.file}`);
   };
 
@@ -107,7 +141,7 @@ export const PlateViewerModal: React.FC<PlateViewerModalProps> = ({
             display: 'grid',
             placeItems: 'center',
             border: '1px solid var(--border)',
-            borderRadius: '8px',
+            borderRadius: 0,
           }}
           onClick={requestClose}
         >

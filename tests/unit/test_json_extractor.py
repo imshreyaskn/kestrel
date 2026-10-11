@@ -127,3 +127,20 @@ And here is the structured result:
     result = extract_and_validate(raw, SampleResearchResponse)
     assert result.answer_markdown == "All systems operational."
     assert result.insufficient_evidence is False
+
+
+def test_unclosed_json_fence_repaired_successfully():
+    # Simulates real LLM output where closing brace is omitted before the closing fence
+    raw = """```json
+{
+  "answer_markdown": "Here is the sequence explained: 1. SEO 2. Sales.",
+  "citations": [
+    { "evidence_id": "E7", "supports": "Framework cycle" }
+  ],
+  "insufficient_evidence": false
+```"""
+    result = extract_and_validate(raw, SampleResearchResponse)
+    assert "Here is the sequence explained" in result.answer_markdown
+    assert len(result.citations) == 1
+    assert result.citations[0].evidence_id == "E7"
+

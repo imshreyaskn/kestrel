@@ -182,6 +182,7 @@ class SessionService:
                     if msg.completed_at
                     else None,
                     "citations": citations,
+                    "metadata": msg.metadata_ or {},
                 }
             )
 

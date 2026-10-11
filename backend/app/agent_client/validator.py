@@ -88,13 +88,22 @@ class ValidatedGrowthBriefResponse(BaseModel):
     insufficient_evidence: bool = False
 
 
+WritingPath = Literal["actionable", "analytical", "aspirational", "anthropological"]
+VALID_WRITING_PATHS: set[str] = {
+    "actionable",
+    "analytical",
+    "aspirational",
+    "anthropological",
+}
+
+
 class ValidatedEssayResponse(BaseModel):
     mode: Literal["essay"] = "essay"
     title: str = "Digital Essay"
     essay_markdown: str = ""
     approximate_word_count: int = 0
     actual_word_count: int = 0
-    writing_path: str = "actionable"
+    writing_path: WritingPath = "actionable"
     citations: list[CitationItem] = Field(default_factory=list)
     insufficient_evidence: bool = False
 
@@ -116,6 +125,7 @@ ValidatedResponse = (
 
 
 _WORD_COUNT_RE = re.compile(r"\b\w+\b")
+_EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F]")
 
 
 def count_words(text: str) -> int:
@@ -143,10 +153,10 @@ def filter_valid_citations(
         eid = ""
         supports = ""
         if isinstance(item, dict):
-            eid = str(item.get("evidence_id", "")).strip()
+            eid = str(item.get("evidence_id", "")).strip().upper()
             supports = str(item.get("supports", "")).strip()
         elif isinstance(item, str):
-            eid = item.strip()
+            eid = item.strip().upper()
 
         if eid in valid_evidence_ids and eid not in seen_ids:
             seen_ids.add(eid)
@@ -155,7 +165,7 @@ def filter_valid_citations(
     return valid_citations
 
 
-_INLINE_LABEL_RE = re.compile(r"\[(E\d+(?:\s*,\s*E\d+)*)\]")
+_INLINE_LABEL_RE = re.compile(r"\[([eE]\d+(?:\s*,\s*[eE]\d+)*)\]")
 
 
 def reconcile_inline_labels(
@@ -174,18 +184,22 @@ def reconcile_inline_labels(
     invalid: list[str] = []
 
     def repl(m: re.Match) -> str:
-        parts = [p.strip() for p in m.group(1).split(",")]
+        parts = [p.strip().upper() for p in m.group(1).split(",") if p.strip()]
         kept: list[str] = []
+        has_invalid = False
         for p in parts:
             if p in valid_ids:
-                kept.append(p)
+                if p not in kept:
+                    kept.append(p)
             else:
-                invalid.append(p)
-        if strict:
+                if p not in invalid:
+                    invalid.append(p)
+                has_invalid = True
+        if strict and has_invalid:
             return m.group(0)
         if not kept:
             return ""
-        return f"[{', '.join(kept)}]"
+        return "".join(f"[{k}]" for k in kept)
 
     cleaned_text = _INLINE_LABEL_RE.sub(repl, text)
 
@@ -193,11 +207,16 @@ def reconcile_inline_labels(
     if strict and invalid:
         return cleaned_text, citations, invalid
 
+    if not strict:
+        # Clean up any trailing whitespace immediately preceding sentence punctuation
+        # created by dropping invalid citations (e.g. "Fact [E99]." -> "Fact.")
+        cleaned_text = re.sub(r"[ \t]+([.,;!?])", r"\1", cleaned_text)
+
     # Find all valid [E#] labels present in cleaned_text
     inline_labels: set[str] = set()
     for m in _INLINE_LABEL_RE.finditer(cleaned_text):
         for p in m.group(1).split(","):
-            eid = p.strip()
+            eid = p.strip().upper()
             if eid in valid_ids:
                 inline_labels.add(eid)
 
@@ -391,12 +410,19 @@ def validate_agent_response(
         if not insufficient and not (min_wc <= actual_wc <= max_wc):
             raise EssayLengthError(actual_wc, min_words=min_wc, max_words=max_wc)
 
+        raw_path = str(payload.get("writing_path", "actionable") or "actionable").strip().lower()
+        if raw_path not in VALID_WRITING_PATHS:
+            raise AgentOutputError(
+                "INVALID_WRITING_PATH",
+                f"writing_path must be one of {sorted(VALID_WRITING_PATHS)}; got {raw_path!r}",
+            )
+
         return ValidatedEssayResponse(
             title=str(payload.get("title", "Digital Essay")).strip(),
             essay_markdown=essay_text,
             approximate_word_count=approx_wc,
             actual_word_count=actual_wc,
-            writing_path=str(payload.get("writing_path", "actionable")),
+            writing_path=raw_path,  # type: ignore[arg-type]
             citations=cleaned_citations,
             insufficient_evidence=insufficient,
         )
@@ -415,9 +441,18 @@ def validate_agent_response(
             for eid in raw_eids
             if str(eid).strip() in valid_evidence_ids
         ]
+        title = str(payload.get("title", "")).strip()
+        if not title:
+            raise AgentOutputError("EMPTY_ANSWER", "Artifact title must not be empty")
+
         content = str(payload.get("content", "")).strip()
         if not content:
             raise AgentOutputError("EMPTY_ANSWER", "Artifact content must not be empty")
+
+        if _EMOJI_RE.search(title) or _EMOJI_RE.search(content):
+            raise AgentOutputError(
+                "ARTIFACT_STYLE", "emoji characters are banned in deliverables"
+            )
 
         content, invalid = enforce_inline_labels(
             content, valid_evidence_ids, strict=strict_labels
@@ -428,7 +463,7 @@ def validate_agent_response(
         return ValidatedArtifactResponse(
             mode="artifact_html" if kind == "html" else "artifact_markdown",
             kind=kind,
-            title=str(payload.get("title", "Artifact")).strip(),
+            title=title,
             content=content,
             source_evidence_ids=cleaned_eids,
         )

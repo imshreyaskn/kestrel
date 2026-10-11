@@ -38,7 +38,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, classNa
       } else if (token.startsWith('*') && token.endsWith('*')) {
         nodes.push(<em key={keyIdx++}>{token.slice(1, -1)}</em>);
       } else if (token.startsWith('`') && token.endsWith('`')) {
-        nodes.push(<code key={keyIdx++} style={{ fontFamily: 'var(--f-mono)', background: 'var(--canvas)', padding: '2px 4px', borderRadius: '4px' }}>{token.slice(1, -1)}</code>);
+        nodes.push(<code key={keyIdx++} style={{ fontFamily: 'var(--f-mono)', background: 'var(--canvas)', padding: '2px 4px', borderRadius: 0 }}>{token.slice(1, -1)}</code>);
       } else if (token.startsWith('[') && token.includes('](')) {
         const linkMatch = token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
         if (linkMatch) {
@@ -108,7 +108,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, classNa
             style={{
               background: 'var(--canvas)',
               border: '1px solid var(--border)',
-              borderRadius: '8px',
+              borderRadius: 0,
               padding: '16px',
               overflowX: 'auto',
               fontFamily: 'var(--f-mono)',

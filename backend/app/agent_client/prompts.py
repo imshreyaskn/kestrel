@@ -55,6 +55,8 @@ REPAIR_GUIDANCE: dict[str, str] = {
     "ESSAY_LENGTH": "Your essay was the wrong length ({detail}). Rewrite to land inside the required range by adding or cutting real content — never pad with repetition or recap.",
     "EMPTY_ANSWER": "The answer field was empty. Provide the actual answer, grounded in the evidence, with citations where claims are archive facts.",
     "INVALID_LABELS": "These inline labels do not exist in this run's evidence: {detail}. Cite only from the provided evidence, or remove the marker and label the claim as your own analysis.",
+    "INVALID_WRITING_PATH": "writing_path must be one of: actionable, analytical, aspirational, anthropological. Choose the one matching your essay structure.",
+    "ARTIFACT_STYLE": "Style violation ({detail}). Remove all emoji characters, gradients, glassmorphism, or banned styling. Deliverables must follow strict editorial press sheet typography.",
     "TRUNCATED": "Your previous response was cut off mid-output. Produce a complete but more concise JSON object that fits the output limit.",
 }
 
@@ -139,6 +141,12 @@ def build_system_prompt(
             else "Apply Ship 30 for 30 digital writing principles."
         )
 
+        craft = default_skill_loader.load_skill("document-craft")
+        craft_bans = ""
+        if craft and "## Hard bans" in craft.instructions:
+            parts = craft.instructions.split("## HTML/CSS rules")
+            craft_bans = "\n\n" + parts[0].strip()
+
         if essay_word_target:
             lo = round(essay_word_target * 0.9)
             hi = round(essay_word_target * 1.1)
@@ -160,29 +168,41 @@ def build_system_prompt(
   "insufficient_evidence": false
 }}"""
         mode_instructions = (
-            f"WORKFLOW MODE: Ship 30 for 30 Digital Essay\n{skill_text}\n"
+            f"WORKFLOW MODE: Ship 30 for 30 Digital Essay\n{skill_text}{craft_bans}\n"
             "If insufficient_evidence is true: do NOT attempt the full essay. State clearly what evidence is missing and offer the closest topic the archive can cover."
         )
 
     elif mode == "artifact_markdown":
+        craft = default_skill_loader.load_skill("document-craft")
+        craft_text = (
+            craft.instructions
+            if craft
+            else "Produce clean, publication-grade markdown."
+        )
         schema_desc = """OUTPUT SCHEMA (STRICT JSON):
 {
   "kind": "markdown",
-  "title": "Artifact Title",
-  "content": "# Markdown Content\\n\\nDetailed grounded content citing [E1]...",
+  "title": "Clear, specific deliverable title",
+  "content": "# Document Title\\n\\n*Standfirst explaining what this shows.*\\n\\nDetailed grounded content citing [E1]...",
   "source_evidence_ids": ["E1"]
 }"""
-        mode_instructions = "WORKFLOW MODE: Standalone Markdown Artifact\nGenerate a self-contained markdown deliverable."
+        mode_instructions = f"WORKFLOW MODE: Standalone Markdown Artifact\n{craft_text}"
 
     elif mode == "artifact_html":
+        craft = default_skill_loader.load_skill("document-craft")
+        craft_text = (
+            craft.instructions
+            if craft
+            else "Produce clean, standalone HTML with embedded styles."
+        )
         schema_desc = """OUTPUT SCHEMA (STRICT JSON):
 {
   "kind": "html",
-  "title": "Artifact Title",
-  "content": "<!DOCTYPE html><html><head><style>/* clean scoped css */</style></head><body><h1>Content</h1></body></html>",
+  "title": "Clear, specific deliverable title",
+  "content": "<!DOCTYPE html><html><head><style>/* scoped editorial css */</style></head><body><h1>Title</h1></body></html>",
   "source_evidence_ids": ["E1"]
 }"""
-        mode_instructions = "WORKFLOW MODE: Standalone HTML Artifact\nGenerate a clean, standalone HTML document with embedded inline styles. Do NOT include scripts, external stylesheets, or external images."
+        mode_instructions = f"WORKFLOW MODE: Standalone HTML Artifact\n{craft_text}"
 
     else:  # default "research"
         schema_desc = """OUTPUT SCHEMA (STRICT JSON):

@@ -7,6 +7,8 @@ interface ComposerBarProps {
   isComposing: boolean;
   activeMode: ComposeMode;
   onModeChange: (mode: ComposeMode) => void;
+  prefillText?: string | null;
+  onClearPrefill?: () => void;
 }
 
 const PLACEHOLDERS: Record<ComposeMode, string> = {
@@ -21,6 +23,8 @@ export const ComposerBar: React.FC<ComposerBarProps> = ({
   isComposing,
   activeMode,
   onModeChange,
+  prefillText,
+  onClearPrefill,
 }) => {
   const [text, setText] = useState('');
   const [format, setFormat] = useState<ArtifactKind>('markdown');
@@ -38,6 +42,16 @@ export const ComposerBar: React.FC<ComposerBarProps> = ({
   useEffect(() => {
     autoGrow();
   }, [text]);
+
+  useEffect(() => {
+    if (prefillText) {
+      setText(prefillText);
+      onClearPrefill?.();
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    }
+  }, [prefillText, onClearPrefill]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

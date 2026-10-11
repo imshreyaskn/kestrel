@@ -38,16 +38,26 @@ const RichText: React.FC<{ text: string; citations?: Citation[] }> = ({ text, ci
         const cit = citations.find((c) => c.refIndex === seg.refIndex);
         if (!cit) return <React.Fragment key={i}>[{seg.evidenceId}]</React.Fragment>;
         return (
-          <button
-            key={i}
-            type="button"
-            className="sn-ref"
-            data-note={cit.id}
-            data-n={cit.refIndex}
-            aria-label={`Read evidence note ${cit.refIndex}`}
-          >
-            {cit.refIndex}
-          </button>
+          <span key={i} className="sn-ref-anchor">
+            <button
+              type="button"
+              className="sn-ref"
+              data-note={cit.id}
+              data-n={cit.refIndex}
+              aria-label={`Read evidence note ${cit.refIndex} — ${cit.speaker}`}
+            >
+              {cit.refIndex}
+            </button>
+            <span className="sn-peek" role="tooltip" aria-hidden="true">
+              <span className="sn-peek-who">
+                <span className="sn-peek-n">{cit.refIndex}</span>
+                {cit.speaker}
+              </span>
+              <span className="sn-peek-q">
+                “{cit.quote.length > 140 ? cit.quote.slice(0, 140) + '…' : cit.quote}”
+              </span>
+            </span>
+          </span>
         );
       })}
     </>
@@ -241,7 +251,11 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
 
                   {/* Margin Apparatus Sidenotes */}
                   {entry.citations?.map((cit) => (
-                    <SideNote key={cit.id} citation={cit} />
+                    <SideNote
+                      key={cit.id}
+                      citation={cit}
+                      defaultExpanded={entry.citations?.length === 1}
+                    />
                   ))}
 
                   {/* Margin Plate if present */}
@@ -256,6 +270,11 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
 
                 <footer className="a-foot">
                   <span className="stamp">{ans.stamp}</span>
+                  {ans.writingPath && (
+                    <span className="stamp path-stamp" style={{ borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
+                      Path: {ans.writingPath.charAt(0).toUpperCase() + ans.writingPath.slice(1)}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="tbtn"
@@ -266,11 +285,16 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                   <button
                     type="button"
                     className="tbtn"
-                    onClick={() =>
-                      onSetEssay(
-                        'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.'
-                      )
-                    }
+                    onClick={() => {
+                      const prevQuery =
+                        index > 0 && entries[index - 1]?.kind === 'query'
+                          ? entries[index - 1].queryText
+                          : null;
+                      const prompt = prevQuery
+                        ? `Write a Ship 30-style essay (~1,250 words) based on our research into “${prevQuery}”. Ground every claim in this session’s sources.`
+                        : 'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.';
+                      onSetEssay(prompt);
+                    }}
                   >
                     Set as an essay →
                   </button>

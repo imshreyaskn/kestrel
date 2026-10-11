@@ -85,7 +85,7 @@ p{margin:0 0 12px}
 .row{display:grid;grid-template-columns:128px 1fr;gap:12px;padding:9px 0;border-bottom:1px dashed var(--line)}
 dt{font:600 10px/1.5 ui-monospace,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 dd{margin:0;font-size:14px}
-.rule{background:var(--soft);border-left:2px solid var(--accent);border-radius:0 8px 8px 0;padding:12px 16px;font-size:14px}
+.rule{background:var(--soft);border-left:2px solid var(--accent);border-radius:0;padding:12px 16px;font-size:14px}
 .foot{font:italic 400 12px/1.5 Georgia,serif;color:var(--muted);margin-top:26px}
 @media (max-width:520px){.row{grid-template-columns:1fr;gap:3px}body{padding:30px 22px 40px}}
 </style></head><body>

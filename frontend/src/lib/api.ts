@@ -48,6 +48,10 @@ export interface CitationRecord {
   publish_date: string | null;
   excerpt: string;
   supports?: string | null;
+  retrieval_rank?: number | null;
+  rrf_score?: number | null;
+  dense_rank?: number | null;
+  sparse_rank?: number | null;
 }
 
 export interface MessageRecord {
@@ -63,6 +67,7 @@ export interface MessageRecord {
   created_at: string;
   completed_at?: string | null;
   citations?: CitationRecord[];
+  metadata?: Record<string, any> | null;
 }
 
 export interface GrowthBriefRecord {
@@ -116,6 +121,7 @@ export interface CompletedStreamData {
     model_id?: string | null;
     created_at?: string | null;
     completed_at?: string | null;
+    metadata?: Record<string, any> | null;
   };
   citations: CitationRecord[];
   insufficient_evidence: boolean;

@@ -202,8 +202,36 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       }
     };
 
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      const btn = target.closest<HTMLElement>('.sn-ref');
+      if (btn?.dataset.note) {
+        setHotState(btn.dataset.note, true);
+        return;
+      }
+      const note = target.closest<HTMLElement>('.snote');
+      if (note?.id) {
+        setHotState(note.id, true);
+      }
+    };
+
+    const handleFocusOut = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      const btn = target.closest<HTMLElement>('.sn-ref');
+      if (btn?.dataset.note) {
+        setHotState(btn.dataset.note, false);
+        return;
+      }
+      const note = target.closest<HTMLElement>('.snote');
+      if (note?.id) {
+        setHotState(note.id, false);
+      }
+    };
+
     document.addEventListener('mouseover', handleMouseOver);
     document.addEventListener('mouseout', handleMouseOut);
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
     document.addEventListener('click', handleClick);
 
     // MutationObserver to redraw when new entries/elements appear with rAF coalescing
@@ -231,6 +259,8 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('mouseover', handleMouseOver);
       document.removeEventListener('mouseout', handleMouseOut);
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
       document.removeEventListener('click', handleClick);
       observer.disconnect();
     };

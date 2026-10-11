@@ -69,19 +69,45 @@ export const GrowthBriefModal: React.FC<GrowthBriefModalProps> = ({
   const [draft, setDraft] = useState<GrowthBriefData>(brief);
 
   const [isClosing, setIsClosing] = useState(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setDraft(brief);
   }, [brief.id, brief.version, brief.updatedAt]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      setIsClosing(false);
+    }
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+    };
+  }, [isOpen]);
+
   const requestClose = useCallback(() => {
     if (prefersReducedMotion() || isClosing) {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      setIsClosing(false);
       onClose();
       return;
     }
     setIsClosing(true);
-    setTimeout(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+    closeTimerRef.current = setTimeout(() => {
       setIsClosing(false);
+      closeTimerRef.current = null;
       onClose();
     }, 320);
   }, [onClose, isClosing]);

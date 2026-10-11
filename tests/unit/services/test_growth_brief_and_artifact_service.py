@@ -131,3 +131,25 @@ async def test_artifact_version_conflict_raises_error():
             content="# New Content",
             expected_version=2,  # Stale version!
         )
+
+
+@pytest.mark.asyncio
+async def test_growth_brief_get_latest_for_session():
+    mock_db = AsyncMock()
+    session_id = uuid.uuid4()
+    brief = GrowthBrief(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        title="Latest Brief",
+        version=1,
+        data={},
+    )
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.first.return_value = brief
+    mock_db.execute.return_value = mock_res
+
+    latest = await GrowthBriefService.get_latest_for_session(mock_db, session_id)
+    assert latest is not None
+    assert latest.title == "Latest Brief"
+    assert latest.session_id == session_id
+

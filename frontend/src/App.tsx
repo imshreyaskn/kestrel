@@ -77,6 +77,7 @@ export const App: React.FC = () => {
   const [isComposing, setIsComposing] = useState(false);
   const [activeMode, setActiveMode] = useState<ComposeMode>('research');
   const [composingSteps, setComposingSteps] = useState<ComposingStep[]>([]);
+  const [composerPrefill, setComposerPrefill] = useState<string | null>(null);
 
   // Toasts & Announcements
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -522,10 +523,16 @@ export const App: React.FC = () => {
                       citations.length === 1 ? '' : 's'
                     } verified`
                   : `Set in ${stampModel} · ${stampProvider}`;
+              const writingPath = data.message.metadata?.writing_path
+                ? String(data.message.metadata.writing_path)
+                : undefined;
               appendEntry(session.id, {
                 id: data.message.id || 'ans-' + Date.now(),
                 kind: 'answer',
-                answerData: buildAnswerData(data.message.content, stamp),
+                answerData: {
+                  ...buildAnswerData(data.message.content, stamp),
+                  writingPath,
+                },
                 citations,
                 createdAt: data.message.created_at || new Date().toISOString(),
               });
@@ -703,8 +710,15 @@ export const App: React.FC = () => {
       setActiveBrief(activeSession.activeBrief);
       setIsBriefOpen(true);
     } else {
-      showToast('No brief bound to this dossier yet — compose one with the Brief mode');
       setActiveMode('growth_brief');
+      const lastQuery = [...(activeSession?.entries || [])]
+        .reverse()
+        .find((e) => e.kind === 'query')?.queryText;
+      const briefPrefill = lastQuery
+        ? `Synthesize a structured growth brief from our research into “${lastQuery}”.`
+        : 'Compose a structured growth brief from this dossier’s findings.';
+      setComposerPrefill(briefPrefill);
+      showToast('Composer set to Growth Brief — press Bind to compose');
     }
   }, [activeSession, showToast]);
 
@@ -871,6 +885,8 @@ export const App: React.FC = () => {
             <Frontmatter
               onSubmit={handleSubmitQuery}
               isComposing={isComposing}
+              prefillText={composerPrefill}
+              onClearPrefill={() => setComposerPrefill(null)}
               onSelectIndexMode={(m, prefill) => {
                 setActiveMode(m);
                 if (prefill) {
@@ -891,19 +907,11 @@ export const App: React.FC = () => {
               onOpenBrief={handleOpenBrief}
               onSetEssay={(prompt) => {
                 setActiveMode('essay');
-                const ta = document.querySelector<HTMLTextAreaElement>('#ckTa');
-                if (ta) {
-                  ta.value = prompt;
-                  ta.focus();
-                }
+                setComposerPrefill(prompt);
               }}
               onExaminePlate={handleExaminePlate}
               onPrefillQuery={(prefill) => {
-                const ta = document.querySelector<HTMLTextAreaElement>('#ckTa');
-                if (ta) {
-                  ta.value = prefill;
-                  ta.focus();
-                }
+                setComposerPrefill(prefill);
               }}
               onRetryLast={handleRetryLast}
             />
@@ -918,6 +926,8 @@ export const App: React.FC = () => {
           isComposing={isComposing}
           activeMode={activeMode}
           onModeChange={setActiveMode}
+          prefillText={composerPrefill}
+          onClearPrefill={() => setComposerPrefill(null)}
         />
       )}
 
@@ -933,11 +943,9 @@ export const App: React.FC = () => {
         }}
         onCastPlate={() => {
           setActiveMode('artifact');
-          const ta = document.querySelector<HTMLTextAreaElement>('#ckTa');
-          if (ta) {
-            ta.value = `Cast an HTML one-pager experiment brief from this growth brief: “${activeBrief?.title || 'the brief'}”.`;
-            ta.focus();
-          }
+          setComposerPrefill(
+            `Cast an HTML one-pager experiment brief from this growth brief: “${activeBrief?.title || 'the brief'}”.`
+          );
           showToast('Composer set to Plate — describe the plate and bind');
         }}
       />
@@ -954,14 +962,9 @@ export const App: React.FC = () => {
         onRevise={(art) => {
           setIsPlateOpen(false);
           setActiveMode('artifact');
-          const ta =
-            view === 'frontmatter'
-              ? document.querySelector<HTMLTextAreaElement>('#fmTa')
-              : document.querySelector<HTMLTextAreaElement>('#ckTa');
-          if (ta) {
-            ta.value = `Revise the plate “${art.title}” — sharpen its decision rule and keep every claim grounded.`;
-            ta.focus();
-          }
+          setComposerPrefill(
+            `Revise the plate “${art.title}” — sharpen its decision rule and keep every claim grounded.`
+          );
           showToast('Composer set to Plate');
         }}
         onCopySuccess={showToast}

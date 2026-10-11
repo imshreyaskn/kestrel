@@ -78,7 +78,7 @@ class AgentGatewayClient:
         mode: str,
         provider: str,
         model_id: str,
-        conversation_context: Sequence[dict[str, str]],
+        conversation_context: Sequence[dict[str, Any]],
         evidence: Sequence[Any],
         product_context: str | None = None,
         cloud_provider: str | None = None,
@@ -192,7 +192,20 @@ class AgentGatewayClient:
                     f"Agent gateway returned status {response.status_code}"
                 )
 
-            data = response.json()
+            try:
+                data = response.json()
+            except Exception as exc:
+                logger.error("Agent gateway returned non-JSON body for request %s: %s", req_id, exc)
+                raise RuntimeError(
+                    f"Agent gateway returned non-JSON payload: {exc}"
+                ) from exc
+
+            if not isinstance(data, dict):
+                logger.error("Agent gateway returned non-object JSON for request %s: %s", req_id, type(data).__name__)
+                raise RuntimeError(
+                    f"Agent gateway returned invalid JSON structure (expected dict, got {type(data).__name__})"
+                )
+
             return GatewayGenerationResult(
                 request_id=data.get("request_id", req_id),
                 session_id=data.get("session_id", session_id),
@@ -204,6 +217,11 @@ class AgentGatewayClient:
                 stop_reason=data.get("stop_reason"),
             )
 
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            logger.error(f"Connection failure to agent gateway at {url}: {exc}")
+            raise ConnectionError(
+                f"Could not connect to agent gateway at {url}: {exc}"
+            ) from exc
         except httpx.TimeoutException as exc:
             logger.error(
                 "Agent gateway timeout for request %s after %ss: %s",
@@ -213,11 +231,6 @@ class AgentGatewayClient:
             )
             raise TimeoutError(
                 f"Agent gateway did not respond within {self.timeout}s"
-            ) from exc
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            logger.error(f"Connection failure to agent gateway at {url}: {exc}")
-            raise ConnectionError(
-                f"Could not connect to agent gateway at {url}: {exc}"
             ) from exc
 
 

@@ -1,6 +1,7 @@
 ---
 name: ship-30-for-30
 version: 1
+min_model_tier: mid
 purpose: Produce an approximately 1,250-word, specific, useful, skimmable digital essay using the Ship 30 for 30 writing principles while grounding all substantive product/growth claims in retrieved Lenny's Podcast evidence.
 ---
 
@@ -8,7 +9,7 @@ purpose: Produce an approximately 1,250-word, specific, useful, skimmable digita
 
 ## Inputs
 - User's essay request and intended audience, if supplied.
-- The current conversation context relevant to the topic.
+- The current conversation context relevant to the topic. When the conversation already contains a grounded answer, rebuild it as an essay — do not re-argue from scratch; reuse its citations where the evidence set still contains them.
 - A bounded set of retrieved transcript evidence items, each with `evidence_id`, `source_id`, `chunk_id`, `guest`, `episode_title`, `episode_url`, `publish_date`, and exact `text`.
 - Optional Growth Brief fields: problem, audience, recommendation, assumptions, experiments, success metrics, and constraints.
 
@@ -20,6 +21,22 @@ purpose: Produce an approximately 1,250-word, specific, useful, skimmable digita
 5. Distinguish direct source claims from synthesis and from proposed application to the reader's situation. If the article makes a recommendation beyond the literal source, frame it as an inference or proposed experiment rather than an expert's direct assertion.
 6. If the evidence set cannot support a substantive essay on the requested topic, do not invent one. Explain the gap and ask for a narrower angle or retrieve more evidence.
 7. The backend—not this skill—validates and maps evidence IDs to canonical source records. Do not invent database IDs or links.
+
+## Headline patterns (choose one, adapt, never use verbatim)
+- "How to {outcome} without {sacrifice}" — tension-forward, actionable path.
+- "{N} {lessons|mistakes|signals} from {specific source/situation}" — analytical path.
+- "The {surprising mechanism} behind {familiar outcome}" — anthropological path.
+- "I/We used to {problem state}. {Change} changed it." — aspirational path, only when the evidence supports the arc; never fabricate a personal story.
+
+Banned headline tropes: "In today's fast-paced world", "Unlock your potential", listicle numbers with no specific noun, colons followed by a vague promise.
+
+## Skeleton (fill, then vary)
+1. Hook (2-4 sentences): concrete scene, tension, or sharp claim the evidence can carry.
+2. Promise + audience (1-2 sentences): what the reader gets, who it's for.
+3. Sections II-V: one idea each — claim → evidence [E#] → mechanism → implication.
+4. Turn: the non-obvious insight (the "rate of revelation" payoff) — must arrive by 60%.
+5. Takeaway: one concrete next action, testable this week.
+6. Close: one line. No recap of the headings.
 
 ## Editorial preparation
 Before drafting, internally create a short outline with:

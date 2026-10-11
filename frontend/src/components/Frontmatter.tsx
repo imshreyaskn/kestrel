@@ -7,6 +7,8 @@ interface FrontmatterProps {
   onSubmit: (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => void;
   isComposing: boolean;
   onSelectIndexMode: (mode: ComposeMode, prefill?: string) => void;
+  prefillText?: string | null;
+  onClearPrefill?: () => void;
 }
 
 const PLACEHOLDERS: Record<ComposeMode, string> = {
@@ -20,6 +22,8 @@ export const Frontmatter: React.FC<FrontmatterProps> = ({
   onSubmit,
   isComposing,
   onSelectIndexMode,
+  prefillText,
+  onClearPrefill,
 }) => {
   const [queryText, setQueryText] = useState('');
   const [mode, setMode] = useState<ComposeMode>('research');
@@ -38,6 +42,16 @@ export const Frontmatter: React.FC<FrontmatterProps> = ({
   useEffect(() => {
     autoGrow();
   }, [queryText]);
+
+  useEffect(() => {
+    if (prefillText) {
+      setQueryText(prefillText);
+      onClearPrefill?.();
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    }
+  }, [prefillText, onClearPrefill]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
