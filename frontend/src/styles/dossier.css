@@ -98,8 +98,9 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
-  overflow-x: hidden;
   background-color: var(--canvas);
+  overflow-x: hidden;
+  overflow-y: scroll; /* Guarantee single primary viewport scroll container */
 }
 
 body {
@@ -111,7 +112,6 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
   min-height: 100vh;
 }
 
@@ -130,12 +130,16 @@ body {
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
 a { color: var(--accent-ink); text-decoration: none; }
 
-/* Hide scrollbars globally across all browsers while preserving full scrollability */
-html, body, * {
+/* Hide scrollbars across browsers while preserving smooth single-viewport scrolling */
+html, body, .sheet, .page, #root {
   scrollbar-width: none;       /* Firefox */
   -ms-overflow-style: none;    /* IE and Edge */
 }
-*::-webkit-scrollbar {
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar,
+.sheet::-webkit-scrollbar,
+.page::-webkit-scrollbar {
   display: none;              /* Chrome, Safari, Opera */
   width: 0;
   height: 0;
