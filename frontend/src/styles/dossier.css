@@ -770,17 +770,17 @@ html, body, * {
 }
 
 .write-glyph {
-  font: 600 20px var(--f-disp);
+  font: 600 16px var(--f-disp);
   color: var(--border);
-  line-height: 1; padding-bottom: 6px; flex: none;
+  line-height: 1; padding-bottom: 5px; flex: none;
   transition: color var(--dur-fast);
 }
 .write-line:focus-within .write-glyph { color: var(--accent); }
 
 .write-line textarea {
   flex: 1; border: 0; background: none; outline: none; resize: none;
-  font: 500 clamp(18px, 2.3vw, 24px)/1.4 var(--f-disp);
-  letter-spacing: -0.012em;
+  font: 500 15px/1.45 var(--f-disp);
+  letter-spacing: -0.01em;
   color: var(--ink);
   max-height: 190px; padding: 0 0 2px;
 }
@@ -1199,7 +1199,7 @@ html, body, * {
 .compose .write-row {
   margin-top: 10px;
 }
-.compose .write-line textarea { font-size: 18.5px; }
+.compose .write-line textarea { font-size: 15px; }
 .compose-hint { margin: 8px 0 0; text-align: right; }
 .compose .write { margin-top: 0; }
 
