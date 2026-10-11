@@ -686,3 +686,48 @@ def test_classify_generation_error_typed_gateway_and_truncation():
     assert "exceeded the model's output limit" in msg
     assert retry is False
 
+
+def test_build_retrieval_query_excludes_conversational_pleasantries():
+    from backend.app.services.conversation_service import build_retrieval_query
+
+    prior = "What is Elena Verna's framework for B2B PLG?"
+
+    # Conversational pleasantries must NOT be expanded with prior user query
+    assert build_retrieval_query("thanks!", prior) == "thanks!"
+    assert build_retrieval_query("thank you", prior) == "thank you"
+    assert build_retrieval_query("got it", prior) == "got it"
+    assert build_retrieval_query("cool", prior) == "cool"
+    assert build_retrieval_query("awesome", prior) == "awesome"
+    assert build_retrieval_query("ok", prior) == "ok"
+    assert build_retrieval_query("hello! what can you do?", prior) == "hello! what can you do?"
+    assert build_retrieval_query("bye", prior) == "bye"
+
+    # Genuine follow-ups (< 6 words or pronoun) MUST be expanded
+    assert build_retrieval_query("tell me more", prior) == f"{prior}\ntell me more"
+    assert build_retrieval_query("how does it work?", prior) == f"{prior}\nhow does it work?"
+
+
+def test_clean_artifact_digest_strips_html_boilerplate():
+    from backend.app.services.conversation_service import _clean_artifact_digest
+
+    html_content = (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<style>:root { --bg: #fff; } body { font-family: serif; } table { border: 1px; }</style>"
+        "</head><body>"
+        "<h1>Growth Model Dashboard</h1>"
+        "<p>This dashboard tracks the core retention loops and channel-model fit for B2B SaaS.</p>"
+        "</body></html>"
+    )
+
+    digest = _clean_artifact_digest(html_content, "html")
+    assert "<style>" not in digest
+    assert "--bg: #fff" not in digest
+    assert "<head>" not in digest
+    assert "Growth Model Dashboard" in digest
+    assert "This dashboard tracks the core retention loops" in digest
+
+    md_content = "# B2B Growth Strategy\n\nKey takeaways from the discussion."
+    digest_md = _clean_artifact_digest(md_content, "markdown")
+    assert digest_md == "# B2B Growth Strategy Key takeaways from the discussion."
+
+

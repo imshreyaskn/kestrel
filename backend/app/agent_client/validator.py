@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.json_extractor import (
     StructuredExtractionError,
+    clean_llm_text,
     extract_json_payload,
 )
 
@@ -157,15 +158,18 @@ def filter_valid_citations(
 _INLINE_LABEL_RE = re.compile(r"\[(E\d+(?:\s*,\s*E\d+)*)\]")
 
 
-def enforce_inline_labels(
+def reconcile_inline_labels(
     text: str,
+    citations: list[CitationItem],
     valid_ids: set[str],
-    strict: bool,
-) -> tuple[str, list[str]]:
-    """Check inline [E#] citation labels against valid retrieved evidence IDs.
-
-    In strict mode, collects invalid labels and leaves text untouched for repair.
-    In non-strict mode, strips invalid labels to avoid broken UI affordances.
+    strict: bool = False,
+) -> tuple[str, list[CitationItem], list[str]]:
+    """Enforce the WYSIWYG citation invariant (CIT5, Move 2):
+    1. Removes any [E#] marker not present in valid retrieved evidence (or keeps for repair if strict).
+    2. Auto-creates citation records for valid [E#] markers present in text
+       that the model omitted from the citations array.
+    3. Sorts citations deterministically by numeric evidence rank (e.g. E1, E2, E3...).
+    Returns (cleaned_text, completed_and_sorted_citations, invalid_dropped_ids).
     """
     invalid: list[str] = []
 
@@ -183,8 +187,81 @@ def enforce_inline_labels(
             return ""
         return f"[{', '.join(kept)}]"
 
-    cleaned = _INLINE_LABEL_RE.sub(repl, text)
+    cleaned_text = _INLINE_LABEL_RE.sub(repl, text)
+
+    # If strict and there were invalid labels, return early for repair prompt
+    if strict and invalid:
+        return cleaned_text, citations, invalid
+
+    # Find all valid [E#] labels present in cleaned_text
+    inline_labels: set[str] = set()
+    for m in _INLINE_LABEL_RE.finditer(cleaned_text):
+        for p in m.group(1).split(","):
+            eid = p.strip()
+            if eid in valid_ids:
+                inline_labels.add(eid)
+
+    existing_eids = {c.evidence_id for c in citations}
+    completed_citations = list(citations)
+
+    # Auto-add missing valid citations referenced in text (CIT5)
+    for missing_eid in sorted(
+        inline_labels - existing_eids,
+        key=lambda x: int(x[1:]) if x.startswith("E") and x[1:].isdigit() else 999,
+    ):
+        completed_citations.append(CitationItem(evidence_id=missing_eid, supports=""))
+
+    # Sort deterministically by numeric evidence rank (Move 1 & CIT4)
+    completed_citations.sort(
+        key=lambda c: int(c.evidence_id[1:])
+        if c.evidence_id.startswith("E") and c.evidence_id[1:].isdigit()
+        else 999
+    )
+
+    return cleaned_text, completed_citations, invalid
+
+
+def enforce_inline_labels(
+    text: str,
+    valid_ids: set[str],
+    strict: bool,
+) -> tuple[str, list[str]]:
+    """Check inline [E#] citation labels against valid retrieved evidence IDs.
+
+    In strict mode, collects invalid labels and leaves text untouched for repair.
+    In non-strict mode, strips invalid labels to avoid broken UI affordances.
+    """
+    cleaned, _, invalid = reconcile_inline_labels(text, [], valid_ids, strict=strict)
     return cleaned, invalid
+
+
+def _extract_research_raw_fallback(
+    raw_text: str,
+    valid_evidence_ids: set[str],
+) -> ValidatedResearchResponse:
+    cleaned = clean_llm_text(raw_text).strip()
+    if not cleaned:
+        raise AgentOutputError("EMPTY_ANSWER", "Raw model output was empty")
+
+    cleaned_text, _ = enforce_inline_labels(cleaned, valid_evidence_ids, strict=False)
+
+    found_ids: set[str] = set()
+    for m in _INLINE_LABEL_RE.finditer(cleaned):
+        for part in m.group(1).split(","):
+            pid = part.strip()
+            if pid in valid_evidence_ids:
+                found_ids.add(pid)
+
+    citations = [CitationItem(evidence_id=eid) for eid in sorted(found_ids)]
+
+    return ValidatedResearchResponse(
+        mode="research",
+        answer_markdown=cleaned_text,
+        citations=citations,
+        scope="in_scope",
+        insufficient_evidence=False,
+        follow_up_question=None,
+    )
 
 
 def validate_agent_response(
@@ -194,6 +271,7 @@ def validate_agent_response(
     essay_word_target: int | None = None,
     stop_reason: str | None = None,
     strict_labels: bool = True,
+    allow_raw_fallback: bool = False,
 ) -> ValidatedResponse:
     """
     Parse, sanitize, validate, and ground LLM response text into a typed response model.
@@ -205,13 +283,25 @@ def validate_agent_response(
     try:
         raw_json = extract_json_payload(raw_response_text)
     except StructuredExtractionError as exc:
+        if allow_raw_fallback and mode == "research":
+            return _extract_research_raw_fallback(
+                raw_response_text, valid_evidence_ids
+            )
         raise AgentOutputError("JSON_PARSE", str(exc)) from exc
 
     try:
         payload = json.loads(raw_json, strict=False)
         if not isinstance(payload, dict):
+            if allow_raw_fallback and mode == "research":
+                return _extract_research_raw_fallback(
+                    raw_response_text, valid_evidence_ids
+                )
             raise AgentOutputError("JSON_PARSE", "Extracted JSON root must be an object")
     except json.JSONDecodeError as exc:
+        if allow_raw_fallback and mode == "research":
+            return _extract_research_raw_fallback(
+                raw_response_text, valid_evidence_ids
+            )
         raise AgentOutputError("JSON_PARSE", f"Failed to parse extracted JSON: {exc}") from exc
 
     if mode == "growth_brief":
@@ -236,17 +326,18 @@ def validate_agent_response(
             raise AgentOutputError("EMPTY_ANSWER", "Growth brief recommendation must not be empty")
 
         summary = str(payload.get("research_summary", "")).strip()
-        rec_clean, inv_rec = enforce_inline_labels(
-            recommendation, valid_evidence_ids, strict=strict_labels
+        rec_clean, comp_cits, inv_rec = reconcile_inline_labels(
+            recommendation, cleaned_citations, valid_evidence_ids, strict=strict_labels
         )
-        sum_clean, inv_sum = enforce_inline_labels(
-            summary, valid_evidence_ids, strict=strict_labels
+        sum_clean, comp_cits, inv_sum = reconcile_inline_labels(
+            summary, comp_cits, valid_evidence_ids, strict=strict_labels
         )
         all_inv = inv_rec + inv_sum
         if strict_labels and all_inv:
             raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(all_inv))))
         recommendation = rec_clean
         summary = sum_clean
+        cleaned_citations = comp_cits
 
         return ValidatedGrowthBriefResponse(
             title=str(payload.get("title", "Growth Brief")).strip(),
@@ -275,8 +366,8 @@ def validate_agent_response(
         if not essay_text:
             raise AgentOutputError("EMPTY_ANSWER", "essay_markdown must not be empty")
 
-        essay_text, invalid = enforce_inline_labels(
-            essay_text, valid_evidence_ids, strict=strict_labels
+        essay_text, cleaned_citations, invalid = reconcile_inline_labels(
+            essay_text, cleaned_citations, valid_evidence_ids, strict=strict_labels
         )
         if strict_labels and invalid:
             raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(invalid))))
@@ -349,8 +440,8 @@ def validate_agent_response(
         if not answer:
             raise AgentOutputError("EMPTY_ANSWER", "answer_markdown must not be empty")
 
-        answer, invalid = enforce_inline_labels(
-            answer, valid_evidence_ids, strict=strict_labels
+        answer, cleaned_citations, invalid = reconcile_inline_labels(
+            answer, cleaned_citations, valid_evidence_ids, strict=strict_labels
         )
         if strict_labels and invalid:
             raise AgentOutputError("INVALID_LABELS", ",".join(sorted(set(invalid))))

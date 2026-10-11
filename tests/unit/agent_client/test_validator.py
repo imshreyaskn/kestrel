@@ -59,8 +59,10 @@ def test_validate_research_response_with_fenced_json():
 
     assert isinstance(result, ValidatedResearchResponse)
     assert "[E1]" in result.answer_markdown
-    assert len(result.citations) == 1
-    assert result.citations[0].evidence_id == "E1"
+    assert "[E2]" in result.answer_markdown
+    # WYSIWYG invariant: E42 pruned, valid E2 cited inline is completed
+    assert len(result.citations) == 2
+    assert [c.evidence_id for c in result.citations] == ["E1", "E2"]
     assert not result.insufficient_evidence
     assert result.follow_up_question == "What is the primary activation metric?"
 
@@ -392,4 +394,97 @@ def test_enforce_inline_labels_strict_and_lenient():
         strict_labels=False,
     )
     assert "[E99]" not in res.answer_markdown
+
+
+def test_validate_research_raw_prose_fallback():
+    from backend.app.agent_client.validator import (
+        AgentOutputError,
+        ValidatedResearchResponse,
+    )
+
+    valid_ids = {"E1", "E2"}
+
+    # 1. Without allow_raw_fallback, raw prose raises JSON_PARSE
+    raw_text = "Hello! I am Lenny's AI growth assistant. How can I help you today?"
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            raw_text,
+            mode="research",
+            valid_evidence_ids=valid_ids,
+            allow_raw_fallback=False,
+        )
+    assert exc_info.value.reason_code == "JSON_PARSE"
+
+    # 2. With allow_raw_fallback in research mode, returns ValidatedResearchResponse
+    res = validate_agent_response(
+        raw_text,
+        mode="research",
+        valid_evidence_ids=valid_ids,
+        allow_raw_fallback=True,
+    )
+    assert isinstance(res, ValidatedResearchResponse)
+    assert res.answer_markdown == raw_text
+    assert res.citations == []
+    assert res.insufficient_evidence is False
+
+    # 3. Raw prose with citations extracts valid ones and prunes phantoms
+    raw_with_citations = "Casey Winters explains sequencing [E1]. Some phantom claim [E99]."
+    res_cited = validate_agent_response(
+        raw_with_citations,
+        mode="research",
+        valid_evidence_ids=valid_ids,
+        allow_raw_fallback=True,
+    )
+    assert isinstance(res_cited, ValidatedResearchResponse)
+    assert "[E1]" in res_cited.answer_markdown
+    assert "[E99]" not in res_cited.answer_markdown
+    assert len(res_cited.citations) == 1
+    assert res_cited.citations[0].evidence_id == "E1"
+
+    # 4. Empty raw prose raises EMPTY_ANSWER even with allow_raw_fallback
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            "   \n\t  ",
+            mode="research",
+            valid_evidence_ids=valid_ids,
+            allow_raw_fallback=True,
+        )
+    assert exc_info.value.reason_code == "EMPTY_ANSWER"
+
+    # 5. Non-research mode (e.g. growth_brief) never falls back to raw prose
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            raw_text,
+            mode="growth_brief",
+            valid_evidence_ids=valid_ids,
+            allow_raw_fallback=True,
+        )
+    assert exc_info.value.reason_code == "JSON_PARSE"
+
+
+def test_reconcile_inline_labels_auto_completes_and_sorts():
+    from backend.app.agent_client.validator import CitationItem, reconcile_inline_labels
+
+    text = "Points [E3] and [E1] are supported. Phantom [E99] is invalid."
+    citations = [CitationItem(evidence_id="E3", supports="Rank 3 item")]
+    valid_ids = {"E1", "E2", "E3"}
+
+    cleaned, completed, dropped = reconcile_inline_labels(
+        text=text, citations=citations, valid_ids=valid_ids, strict=False
+    )
+
+    # 1. Invalid E99 was stripped
+    assert "[E99]" not in cleaned
+    assert dropped == ["E99"]
+    assert "[E3]" in cleaned
+    assert "[E1]" in cleaned
+
+    # 2. E1 was auto-completed because it was valid and cited inline
+    eids = [c.evidence_id for c in completed]
+    assert eids == ["E1", "E3"]  # Sorted by evidence rank!
+    # E3 preserves its supports text, E1 has default
+    assert completed[0].evidence_id == "E1"
+    assert completed[1].evidence_id == "E3"
+    assert completed[1].supports == "Rank 3 item"
+
 

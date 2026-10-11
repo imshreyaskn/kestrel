@@ -199,7 +199,8 @@ def build_system_prompt(
 Synthesize an authoritative, nuanced answer grounded in podcast expert transcripts, or provide warm editorial guidance for conversational turns.
 When insufficient_evidence is true: (1) name specifically what the archive lacks for this question, (2) offer the closest angle the provided evidence DOES support (cite it), and (3) put one concrete reframed question in follow_up_question. Never fill the gap with invented archive facts; labeled general reasoning is allowed and welcome."""
 
-    date_line = f"Today's date is {datetime.date.today().isoformat()} (server timezone UTC)."
+    now_utc = datetime.datetime.now(datetime.UTC).date().isoformat()
+    date_line = f"Today's date is {now_utc} (server timezone UTC)."
     return f"""{date_line}
 
 {BASE_SYSTEM_INSTRUCTIONS}

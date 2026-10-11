@@ -85,7 +85,7 @@ def test_build_system_prompt_includes_current_date():
     import datetime
 
     prompt = build_system_prompt(mode="research", evidence_block="evidence")
-    today_str = datetime.date.today().isoformat()
+    today_str = datetime.datetime.now(datetime.UTC).date().isoformat()
     assert f"Today's date is {today_str}" in prompt
 
 

@@ -184,3 +184,20 @@ async def test_gateway_client_typed_errors_and_stop_reason():
         )
         assert res.stop_reason == "length"
 
+    # 5. Generic 400 (e.g. invalid_payload) -> GatewayConfigError
+    def handler_400_invalid(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": "invalid_payload"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_400_invalid)) as http_client:
+        client = AgentGatewayClient(http_client=http_client)
+        with pytest.raises(GatewayConfigError, match="Gateway rejected request: invalid_payload"):
+            await client.generate(
+                session_id="sess-1",
+                current_user_message="test",
+                mode="research",
+                provider="local",
+                model_id="qwen2.5:1.5b",
+                conversation_context=[],
+                evidence=[],
+            )
+

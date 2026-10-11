@@ -48,6 +48,7 @@ from backend.app.models.entities import (
 from backend.app.retrieval.hybrid_search import (
     EvidenceItem,
     HybridRetrievalService,
+    RetrievalResult,
 )
 from backend.app.services.artifact_service import ArtifactService
 from backend.app.services.growth_brief_service import GrowthBriefService
@@ -73,13 +74,40 @@ _FOLLOWUP_RE = re.compile(
     r"\b(it|that|this|these|those|they|he|she|him|her|them|same|more|again)\b",
     re.I,
 )
+_CONVERSATIONAL_QUERY_RE = re.compile(
+    r"^(hi|hello|hey|greetings|howdy|sup|good\s+(morning|afternoon|evening|day)|"
+    r"thanks?(\s+you)?(\s+so\s+much|\s+a\s+lot)?|thx|"
+    r"who\s+are\s+you|what\s+can\s+you\s+do|how\s+can\s+you\s+help|what\s+are\s+you|"
+    r"bye|goodbye|see\s+ya|cool|awesome|great|ok|okay|got\s+it)"
+    r"([!?,.\s]+(who\s+are\s+you|what\s+can\s+you\s+do|how\s+can\s+you\s+help|what\s+are\s+you|how\s+are\s+you))?"
+    r"[.!?\s]*$",
+    re.I,
+)
 CHARS_PER_TOKEN = 4
+
+
+def _clean_artifact_digest(content: str, kind: str) -> str:
+    """Extract readable text digest from artifact content, stripping HTML tags and styles."""
+    if kind == "html":
+        no_scripts = re.sub(
+            r"<(script|style)[^>]*>.*?</\1>", " ", content, flags=re.DOTALL | re.I
+        )
+        no_head = re.sub(
+            r"<head[^>]*>.*?</head>", " ", no_scripts, flags=re.DOTALL | re.I
+        )
+        text = re.sub(r"<[^>]+>", " ", no_head)
+        cleaned = re.sub(r"\s+", " ", text).strip()
+        return (cleaned[:600] + "…") if len(cleaned) > 600 else cleaned
+    text = re.sub(r"\s+", " ", content).strip()
+    return (text[:600] + "…") if len(text) > 600 else text
 
 
 def build_retrieval_query(current: str, prior_user: str | None) -> str:
     """Expand short or anaphoric follow-up queries using the prior user turn (Finding B3)."""
     q = current.strip()
     words = q.split()
+    if _CONVERSATIONAL_QUERY_RE.match(q):
+        return q
     if prior_user and (len(words) < 6 or _FOLLOWUP_RE.search(q)):
         return f"{prior_user.strip()}\n{q}"
     return q
@@ -466,11 +494,25 @@ class ConversationService:
                 content,
             )
 
-            retrieval_res = await self.retrieval_service.search(
-                session=db,
-                query=retrieval_query,
-                top_k=settings.RETRIEVAL_TOP_K,
-            )
+            if mode == "research" and _CONVERSATIONAL_QUERY_RE.match(content.strip()):
+                logger.info(
+                    "Run %s: conversational turn detected; skipping archive retrieval",
+                    run_id,
+                )
+                retrieval_res = RetrievalResult(
+                    items=[],
+                    insufficient_evidence=False,
+                    query=content.strip(),
+                    top_score=0.0,
+                    top_dense_score=0.0,
+                    weak_evidence=False,
+                )
+            else:
+                retrieval_res = await self.retrieval_service.search(
+                    session=db,
+                    query=retrieval_query,
+                    top_k=settings.RETRIEVAL_TOP_K,
+                )
 
             # Map retrieved evidence items to request-scoped [E1..En]
             evidence_items: list[EvidenceItem] = list(retrieval_res)
@@ -533,20 +575,36 @@ class ConversationService:
                 )
             except StructuredExtractionError as first_error:
                 if not evidence_items:
-                    # Nothing to ground on AND the model output is unusable: honest canned
-                    # fallback (spec §11.2) instead of burning a repair on an empty context.
-                    logger.info(
-                        "Run %s: generation failed on empty evidence (%s); raw response: %r; falling back immediately to abstention",
-                        run_id,
-                        first_error,
-                        gw_result.raw_response,
-                    )
-                    validated_any = ValidatedResearchResponse(
-                        answer_markdown=ABSTENTION_ANSWER,
-                        citations=[],
-                        insufficient_evidence=True,
-                        follow_up_question=ABSTENTION_FOLLOW_UP,
-                    )
+                    clean_raw = gw_result.raw_response.strip()
+                    if (
+                        mode == "research"
+                        and _CONVERSATIONAL_QUERY_RE.match(content.strip())
+                        and clean_raw
+                        and not clean_raw.startswith("{")
+                    ):
+                        logger.info(
+                            "Run %s: conversational turn with raw text response; using raw response for answer_markdown",
+                            run_id,
+                        )
+                        validated_any = ValidatedResearchResponse(
+                            answer_markdown=clean_raw,
+                            citations=[],
+                            insufficient_evidence=False,
+                            follow_up_question=None,
+                        )
+                    else:
+                        logger.info(
+                            "Run %s: generation failed on empty evidence (%s); raw response: %r; falling back immediately to abstention",
+                            run_id,
+                            first_error,
+                            gw_result.raw_response,
+                        )
+                        validated_any = ValidatedResearchResponse(
+                            answer_markdown=ABSTENTION_ANSWER,
+                            citations=[],
+                            insufficient_evidence=True,
+                            follow_up_question=ABSTENTION_FOLLOW_UP,
+                        )
                 else:
                     logger.warning(
                         "Run %s: initial model output failed validation (%s); raw response: %r; attempting one constrained repair",
@@ -594,6 +652,7 @@ class ConversationService:
                             essay_word_target=target_word_count,
                             stop_reason=gw_result.stop_reason,
                             strict_labels=False,
+                            allow_raw_fallback=True,
                         )
                     except StructuredExtractionError as repair_error:
                         logger.error(
@@ -656,10 +715,10 @@ class ConversationService:
                 assistant_message.content = validated.essay_markdown
 
             elif isinstance(validated, ValidatedArtifactResponse):
-                digest = validated.content[:600].replace("\n", " ")
+                digest = _clean_artifact_digest(validated.content, validated.kind)
                 assistant_message.content = (
                     f"Created {validated.kind.upper()} artifact: **{validated.title}**\n"
-                    f"[content digest] {digest}…"
+                    f"[content digest] {digest}"
                 )
                 artifact = await ArtifactService.create_artifact(
                     db=db,
@@ -688,17 +747,22 @@ class ConversationService:
 
             # Persist message_sources join table records for validated citations.
             # retrieval_rank is the ordinal position in the final fused
-            # evidence ranking for this run.
+            # evidence ranking for this run (CIT4).
             citation_payloads: list[dict[str, Any]] = []
             for cit in getattr(validated, "citations", []):
                 ev = evidence_map.get(cit.evidence_id)
                 if ev and ev.chunk_id:
+                    ret_rank = (
+                        int(cit.evidence_id[1:])
+                        if cit.evidence_id.startswith("E") and cit.evidence_id[1:].isdigit()
+                        else (len(citation_payloads) + 1)
+                    )
                     ms = MessageSource(
                         message_id=assistant_message.id,
                         chunk_id=ev.chunk_id,
                         evidence_id=cit.evidence_id,
                         supports=cit.supports or "",
-                        retrieval_rank=len(citation_payloads) + 1,
+                        retrieval_rank=ret_rank,
                         semantic_score=None,
                         keyword_score=None,
                     )
@@ -717,6 +781,10 @@ class ConversationService:
                             else None,
                             "excerpt": ev.excerpt,  # Stored chunk content
                             "supports": cit.supports,
+                            "retrieval_rank": ret_rank,
+                            "rrf_score": ev.rrf_score,
+                            "dense_rank": ev.dense_rank,
+                            "sparse_rank": ev.sparse_rank,
                         }
                     )
 

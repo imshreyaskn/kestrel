@@ -138,7 +138,12 @@ class SessionService:
         message_list: list[dict[str, Any]] = []
         for msg in messages:
             citations: list[dict[str, Any]] = []
-            for src in msg.sources:
+            rrf_scores = (msg.metadata_ or {}).get("evidence_rrf_scores", {})
+            sorted_sources = sorted(
+                msg.sources,
+                key=lambda s: s.retrieval_rank if s.retrieval_rank is not None else 999,
+            )
+            for src in sorted_sources:
                 chunk = src.chunk
                 source = chunk.source if chunk else None
                 citations.append(
@@ -156,6 +161,8 @@ class SessionService:
                         if chunk
                         else "",  # SPEC §5.6: Read from stored chunk, not generated quote
                         "supports": src.supports,
+                        "retrieval_rank": src.retrieval_rank,
+                        "rrf_score": rrf_scores.get(src.evidence_id),
                     }
                 )
 

@@ -179,9 +179,13 @@ class AgentGatewayClient:
                     raise PayloadTooLargeError(
                         "Generation payload exceeded the gateway body limit"
                     )
-                if response.status_code == 400 and err_code == "missing_api_key":
+                if response.status_code == 400:
+                    if err_code == "missing_api_key":
+                        raise GatewayConfigError(
+                            "Cloud provider API key is not configured on the server"
+                        )
                     raise GatewayConfigError(
-                        "Cloud provider API key is not configured on the server"
+                        f"Gateway rejected request: {err_code or 'invalid_payload'}"
                     )
 
                 raise RuntimeError(

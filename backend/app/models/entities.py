@@ -151,7 +151,10 @@ class Message(Base):
         "ChatSession", back_populates="messages"
     )
     sources: Mapped[list["MessageSource"]] = relationship(
-        "MessageSource", back_populates="message", cascade="all, delete-orphan"
+        "MessageSource",
+        back_populates="message",
+        cascade="all, delete-orphan",
+        order_by="MessageSource.retrieval_rank",
     )
 
 

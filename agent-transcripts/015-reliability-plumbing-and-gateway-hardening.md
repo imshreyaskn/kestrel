@@ -50,3 +50,35 @@ In strict alignment with user instructions and project principles:
 5. **Readiness Probe on Live Docker Stack:**
    - Command: `curl.exe -s http://localhost:8000/api/v1/health/ready`
    - Result: `{"status":"ready","components":{"database":{"status":"up","type":"postgresql"},"ollama":{"status":"up","version":"0.40.2"},"agent_gateway":{"status":"up"}}}` (Exit Code 0).
+
+---
+
+## 4. Audit Findings Remediation & Hardening
+
+Following the audit of commit `a01ec09`, five concrete reliability defects were resolved:
+1. **Local Model Usability & Prose Fallback for Research Mode:**
+   - In `validator.py`, added `allow_raw_fallback=True` for `mode == "research"`. When `qwen2.5:1.5b` emits clean prose instead of JSON, the text is extracted as `answer_markdown`, valid inline `[E#]` labels are parsed into `CitationItem`s, and phantom labels are pruned. Zero HTTP 422 validation crashes.
+2. **Conversational Turn Archival Retrieval Skipping:**
+   - In `conversation_service.py`, pure pleasantries and meta-queries (`"hello! what can you do?"`, `"thanks"`) skip archive retrieval (`items: []`). This eliminates prompt clutter, speeds up response time to ~6 seconds, and keeps the local model focused on conversational assistance.
+3. **Conversational Query Exclusion from Follow-up Expansion:**
+   - `build_retrieval_query` guards pleasantries (`_CONVERSATIONAL_QUERY_RE`) so they are never prepended with prior turn content.
+4. **HTML Artifact Digest Boilerplate Stripping:**
+   - Added `_clean_artifact_digest` stripping `<style>`, `<script>`, `<head>`, and HTML tags from HTML artifact digests, preserving readable content in conversation history replay.
+5. **UTC Date Accuracy & Gateway 400 Classification:**
+   - `prompts.py` now uses `datetime.datetime.now(datetime.UTC).date().isoformat()`.
+   - `gateway_client.py` maps all HTTP 400 client errors to non-retryable `GatewayConfigError`.
+
+---
+
+## 5. Live Runtime Empirical Verification (Post-Remediation)
+
+1. **Probe 1 (Conversational greeting):**
+   - Query: `"hello! what can you do?"`
+   - Execution: `POST /api/v1/sessions/{id}/messages` against live `kestrel-api` container.
+   - Result: HTTP 200, status `complete`, citations `[]`, `insufficient_evidence: false`.
+   - Response: *"Hello! I can answer product and growth strategy-related questions grounded in podcast expert transcripts..."* (Completed in 6.7s, zero 422 errors).
+2. **Probe 2 (Substantive query):**
+   - Query: `"How does Casey Winters sequence growth work?"`
+   - Execution: `POST /api/v1/sessions/{id}/messages` against live `kestrel-api` container.
+   - Result: HTTP 200, status `complete`, `insufficient_evidence: false`.
+   - Citations: Grounded citation `[E5]` with guest *"Casey Winters"*, episode *"How to sell your ideas and rise within your company | Casey Winters, Eventbrite"*.
