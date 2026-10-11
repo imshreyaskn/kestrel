@@ -27,7 +27,7 @@
   --ink:         #161614;          /* near-black ink, slight warmth (all primary typography) */
   --muted-ink:   #6B6663;          /* warm gray (secondary text, labels, metadata) */
   --ink-soft:    #3D3A37;          /* soft dark ink (body copy, quotes) */
-  --faint:       #9C9690;          /* light warm gray (subtle captions, hints) */
+  --faint:       #716A64;          /* warm gray (subtle captions, hints — passes WCAG AA 4.69:1) */
   --border:      #DDD7CB;          /* refined bone-tinted border line */
 
   /* — Aubergine Accent System — */
@@ -40,6 +40,7 @@
   /* — Semantic Accents — */
   --success:     #3D5A4A;          /* dark forest green */
   --danger:      #8B2D1F;          /* deep brick red */
+  --crimson:     var(--danger);    /* title limit reached & danger alias */
   --gold:        #A98A54;          /* editorial antique gold */
   --gold-soft:   rgba(169, 138, 84, 0.14);
 
@@ -130,17 +131,57 @@ body {
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
 a { color: var(--accent-ink); text-decoration: none; }
 
-/* Hide scrollbars across browsers while preserving smooth single-viewport scrolling */
-html, body, .sheet, .page, #root {
-  scrollbar-width: none;       /* Firefox */
-  -ms-overflow-style: none;    /* IE and Edge */
+/* Editorial hairline scrollbars for document and modal viewports (Option A) */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
+html::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+html::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+html::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-ink);
+}
+
+.fold-doc, .pv-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.fold-doc::-webkit-scrollbar,
+.pv-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.fold-doc::-webkit-scrollbar-track,
+.pv-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.fold-doc::-webkit-scrollbar-thumb,
+.pv-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.fold-doc::-webkit-scrollbar-thumb:hover,
+.pv-body::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-ink);
+}
+
+.sheet, .page, #root {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
 #root::-webkit-scrollbar,
 .sheet::-webkit-scrollbar,
 .page::-webkit-scrollbar {
-  display: none;              /* Chrome, Safari, Opera */
+  display: none;
   width: 0;
   height: 0;
 }
@@ -449,17 +490,18 @@ body::-webkit-scrollbar,
    ===================================================================== */
 .rail {
   position: fixed; top: 68px; bottom: 20px; left: 14px; z-index: 150;
-  width: 50px;
+  width: 280px;
   background: transparent;
   border: none;
   box-shadow: none;
   display: flex; flex-direction: column; gap: 10px;
   overflow: visible;
   pointer-events: none;
-  transition: width var(--dur-deliberate) var(--ease-out-expo);
+  clip-path: inset(0 calc(100% - 50px) 0 0 round 0);
+  transition: clip-path var(--dur-deliberate) var(--ease-out-expo);
 }
 .rail:hover, .rail:focus-within, .rail.open {
-  width: 280px;
+  clip-path: inset(0 0 0 0);
   background: transparent;
   box-shadow: none;
 }
@@ -1128,7 +1170,7 @@ body::-webkit-scrollbar,
 }
 .endmark svg {
   width: 12px; height: 12px;
-  fill: var(--accent);
+  fill: var(--gold);
   transition: transform var(--dur-fast);
 }
 .endmark.bloom svg {
@@ -1470,14 +1512,16 @@ body::-webkit-scrollbar,
     transform: translateX(-105%);
     left: 10px; top: 58px; bottom: 14px;
     width: min(290px, calc(100vw - 20px));
+    clip-path: none;
     transition: transform var(--dur-deliberate) var(--ease-sheet);
     z-index: 950;
     pointer-events: none;
   }
-  .rail:hover, .rail:focus-within { width: min(290px, calc(100vw - 20px)); }
+  .rail:hover, .rail:focus-within { width: min(290px, calc(100vw - 20px)); clip-path: none; }
   .rail.open {
     transform: none;
     pointer-events: auto;
+    clip-path: none;
   }
   .rail .rl-t, .rail .rl-m, .rail .rl-group, .rail .rail-new .rl-t { opacity: 1; }
   .rail-spine, .rail-protolabel { display: none; }

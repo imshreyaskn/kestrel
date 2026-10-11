@@ -26,12 +26,18 @@ ESSAY_MAX_WORDS = 1350
 class EssayLengthError(StructuredExtractionError):
     """Raised when a generated essay falls outside the accepted word range."""
 
-    def __init__(self, actual_words: int) -> None:
+    def __init__(
+        self,
+        actual_words: int,
+        min_words: int = ESSAY_MIN_WORDS,
+        max_words: int = ESSAY_MAX_WORDS,
+    ) -> None:
         self.actual_words = actual_words
+        self.min_words = min_words
+        self.max_words = max_words
         super().__init__(
             f"Essay length {actual_words} words is outside the accepted "
-            f"range of {ESSAY_MIN_WORDS}-{ESSAY_MAX_WORDS} words "
-            f"(target ~1,250)."
+            f"range of {min_words}-{max_words} words."
         )
 
 
@@ -143,6 +149,7 @@ def validate_agent_response(
     raw_response_text: str,
     mode: str,
     valid_evidence_ids: set[str],
+    essay_word_target: int | None = None,
 ) -> ValidatedResponse:
     """
     Parse, sanitize, validate, and ground LLM response text into a typed response model.
@@ -174,11 +181,16 @@ def validate_agent_response(
         if not isinstance(risks, list):
             risks = [str(risks)] if risks else []
 
+        recommendation = str(payload.get("recommendation", "")).strip()
+        insufficient = bool(payload.get("insufficient_evidence", False))
+        if not recommendation and not insufficient:
+            raise StructuredExtractionError("Growth brief recommendation must not be empty")
+
         return ValidatedGrowthBriefResponse(
             title=str(payload.get("title", "Growth Brief")).strip(),
             problem=str(payload.get("problem", "")).strip(),
             research_summary=str(payload.get("research_summary", "")).strip(),
-            recommendation=str(payload.get("recommendation", "")).strip(),
+            recommendation=recommendation,
             assumptions=[str(a) for a in assumptions],
             experiment=ExperimentPlan(
                 hypothesis=str(exp_data.get("hypothesis", "")),
@@ -191,20 +203,31 @@ def validate_agent_response(
             risks=[str(r) for r in risks],
             next_deliverable=str(payload.get("next_deliverable", "")).strip(),
             citations=cleaned_citations,
-            insufficient_evidence=bool(payload.get("insufficient_evidence", False)),
+            insufficient_evidence=insufficient,
         )
 
     elif mode == "essay":
         raw_citations = payload.get("citations", [])
         cleaned_citations = filter_valid_citations(raw_citations, valid_evidence_ids)
         essay_text = str(payload.get("essay_markdown", "")).strip()
-        actual_wc = count_words(essay_text)
+        insufficient = bool(payload.get("insufficient_evidence", False))
+
+        # Inline markers [E#] are citations, not prose words
+        countable_text = re.sub(r"\[E\d+\]", "", essay_text)
+        actual_wc = count_words(countable_text)
         approx_wc = int(payload.get("approximate_word_count", actual_wc) or actual_wc)
 
-        # Spec §8.4 word-count gate: reject drafts outside 1,150–1,350 words
-        # rather than persisting an essay that violates the skill contract.
-        if not (ESSAY_MIN_WORDS <= actual_wc <= ESSAY_MAX_WORDS):
-            raise EssayLengthError(actual_wc)
+        if essay_word_target is not None:
+            min_wc = round(essay_word_target * 0.9)
+            max_wc = round(essay_word_target * 1.1)
+        else:
+            min_wc = ESSAY_MIN_WORDS
+            max_wc = ESSAY_MAX_WORDS
+
+        # Spec §8.4 word-count gate: reject drafts outside target range
+        # unless insufficient_evidence is True (honest archive decline).
+        if not insufficient and not (min_wc <= actual_wc <= max_wc):
+            raise EssayLengthError(actual_wc, min_words=min_wc, max_words=max_wc)
 
         return ValidatedEssayResponse(
             title=str(payload.get("title", "Digital Essay")).strip(),
@@ -213,7 +236,7 @@ def validate_agent_response(
             actual_word_count=actual_wc,
             writing_path=str(payload.get("writing_path", "actionable")),
             citations=cleaned_citations,
-            insufficient_evidence=bool(payload.get("insufficient_evidence", False)),
+            insufficient_evidence=insufficient,
         )
 
     elif mode in ("artifact_markdown", "artifact_html"):
@@ -230,12 +253,15 @@ def validate_agent_response(
             for eid in raw_eids
             if str(eid).strip() in valid_evidence_ids
         ]
+        content = str(payload.get("content", "")).strip()
+        if not content:
+            raise StructuredExtractionError("Artifact content must not be empty")
 
         return ValidatedArtifactResponse(
             mode="artifact_html" if kind == "html" else "artifact_markdown",
             kind=kind,
             title=str(payload.get("title", "Artifact")).strip(),
-            content=str(payload.get("content", "")).strip(),
+            content=content,
             source_evidence_ids=cleaned_eids,
         )
 
@@ -243,6 +269,8 @@ def validate_agent_response(
         raw_citations = payload.get("citations", [])
         cleaned_citations = filter_valid_citations(raw_citations, valid_evidence_ids)
         answer = str(payload.get("answer_markdown", "")).strip()
+        if not answer:
+            raise StructuredExtractionError("answer_markdown must not be empty")
 
         follow_up = payload.get("follow_up_question")
         follow_up_str = str(follow_up).strip() if follow_up else None

@@ -69,7 +69,7 @@ def test_build_system_prompt_for_all_modes():
             product_context="Early-stage B2B dev tools platform",
         )
         assert "Lenny Growth Assistant" in prompt
-        assert "STRICT GROUNDING" in prompt
+        assert "EPISTEMIC RULES" in prompt
         assert "OUTPUT SCHEMA" in prompt
         assert "USER-SUPPLIED PRODUCT CONTEXT" in prompt
         assert "[E1] Excerpt" in prompt

@@ -118,7 +118,7 @@ const GenerateRequestSchema = z.object({
       supports: z.string().nullable().optional(),
     })
   ).default([]),
-  system_prompt: z.string().optional(),
+  system_prompt: z.string().min(1),
   product_context: z.string().nullable().optional(),
   output_contract_version: z.string().default("1.0"),
 });
@@ -183,31 +183,12 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
   const payload = parseResult.data;
 
   try {
-    // Build evidence-grounded system prompt
-    const evidenceText = payload.evidence.length > 0
-      ? payload.evidence
-          .map((e) => `[${e.evidence_id}] "${e.excerpt}" (Episode: ${e.episode_title || "Unknown"}, Guest: ${e.guest || "Unknown"})`)
-          .join("\n\n")
-      : "No transcript evidence provided.";
+    const userPromptReminder =
+      payload.evidence.length > 0
+        ? "Remember: For substantive claims, cite evidence using tags like [E1] and populate the \"citations\" array. For conversational greetings or identity queries, respond warmly with citations: []. Output strictly valid JSON matching the schema."
+        : "Remember: For conversational queries or assistance, respond warmly as Kestrel with citations: [] and insufficient_evidence: false. Output strictly valid JSON matching the schema.";
 
-    const fallbackSystemPrompt = `You are the Lenny Growth Assistant (Kestrel), an evidence-grounded AI assistant.
-Your answers must rely strictly on the provided transcript evidence.
-Cite evidence using exact tags such as [E1], [E2].
-Never fabricate facts or cite evidence not present in the provided list.
-
-CRITICAL INSTRUCTION: Your output MUST be a valid JSON object starting with { and ending with }.
-Do not include any conversational preamble or markdown text outside the JSON object.
-Schema:
-{
-  "answer_markdown": "Your detailed answer citing [E1]...",
-  "citations": [{"evidence_id": "E1", "supports": "Summary of supported point"}],
-  "insufficient_evidence": false
-}
-
-TRANSCRIPT EVIDENCE:
-${evidenceText}`;
-
-    const systemPrompt = payload.system_prompt || fallbackSystemPrompt;
+    const systemPrompt = `${payload.system_prompt}\n\n${userPromptReminder}`;
 
     // Construct Pi AI Context Messages
     const piMessages: Message[] = [];
@@ -238,14 +219,9 @@ ${evidenceText}`;
       }
     }
 
-    const userPromptReminder =
-      payload.evidence.length > 0
-        ? "\n\nRemember: For substantive claims, cite evidence using tags like [E1] and populate the \"citations\" array. For conversational greetings or identity queries, respond warmly with citations: []. Output strictly valid JSON matching the schema."
-        : "\n\nRemember: For conversational queries or assistance, respond warmly as Kestrel with citations: [] and insufficient_evidence: false. Output strictly valid JSON matching the schema.";
-
     piMessages.push({
       role: "user",
-      content: `${payload.current_user_message}${userPromptReminder}`,
+      content: payload.current_user_message,
       timestamp: Date.now(),
     });
 

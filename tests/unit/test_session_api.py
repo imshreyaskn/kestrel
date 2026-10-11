@@ -425,3 +425,65 @@ def test_get_session_messages_accepts_pagination():
         mock_get.assert_called_once()
         assert mock_get.call_args.kwargs.get("limit") == 50
         assert mock_get.call_args.kwargs.get("offset") == 10
+
+
+def test_submit_message_rejects_blank_content():
+    """Content must not be empty or whitespace-only."""
+    sess_id = uuid.uuid4()
+    response = client.post(
+        f"/api/v1/sessions/{sess_id}/messages",
+        json={
+            "content": "   \n\t   ",
+            "mode": "research",
+            "provider": "local",
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_submit_message_rejects_target_word_count_for_non_essay_mode():
+    """target_word_count is only allowed when mode is 'essay'."""
+    sess_id = uuid.uuid4()
+    response = client.post(
+        f"/api/v1/sessions/{sess_id}/messages",
+        json={
+            "content": "Hello",
+            "mode": "research",
+            "provider": "local",
+            "target_word_count": 500,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_submit_message_accepts_target_word_count_for_essay_mode():
+    """target_word_count is valid for essay mode."""
+    sess_id = uuid.uuid4()
+    fake_session = ChatSession(
+        id=sess_id,
+        user_id=uuid.UUID("00000000-0000-4000-8000-000000000001"),
+    )
+    with (
+        patch(
+            "backend.app.api.v1.sessions.default_session_service.get_session",
+            new=AsyncMock(return_value=fake_session),
+        ),
+        patch(
+            "backend.app.api.v1.sessions.default_conversation_service.process_message",
+            new=AsyncMock(return_value={"message": {"content": "Essay"}}),
+        ) as mock_proc,
+    ):
+        response = client.post(
+            f"/api/v1/sessions/{sess_id}/messages",
+            json={
+                "content": "Write an essay about retention loops",
+                "mode": "essay",
+                "provider": "local",
+                "target_word_count": 600,
+                "stream": False,
+            },
+        )
+        assert response.status_code == 200
+        mock_proc.assert_called_once()
+        assert mock_proc.call_args.kwargs.get("target_word_count") == 600
+

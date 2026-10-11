@@ -6,6 +6,7 @@ Unit tests for ConversationService orchestrator and SSE stream generation.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,7 +14,7 @@ import pytest
 
 from backend.app.agent_client.gateway_client import GatewayGenerationResult
 from backend.app.core.config import settings
-from backend.app.models.entities import ChatSession
+from backend.app.models.entities import ChatSession, Message
 from backend.app.retrieval.hybrid_search import EvidenceItem, RetrievalResult
 from backend.app.services.conversation_service import (
     ConversationService,
@@ -241,8 +242,8 @@ async def test_conversation_service_session_not_found_returns_error_envelope():
 
 
 @pytest.mark.asyncio
-async def test_conversation_service_abstains_when_evidence_empty():
-    """Spec §7.6/§11.2/§12.1: empty retrieval must NOT call generation."""
+async def test_conversation_service_generates_when_evidence_empty():
+    """Empty retrieval calls gateway allowing conversational turns and honest declines."""
     user_id = uuid.uuid4()
     session_id = uuid.uuid4()
 
@@ -262,7 +263,21 @@ async def test_conversation_service_abstains_when_evidence_empty():
         query="What is the average PLG conversion benchmark?",
     )
 
-    mock_gateway = AsyncMock()  # must never be called
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.return_value = GatewayGenerationResult(
+        request_id="req-1",
+        session_id=str(session_id),
+        provider="local",
+        model_id="qwen2.5:7b-instruct-q4_K_M",
+        raw_response=json.dumps({
+            "answer_markdown": "The Lenny's Podcast archive does not contain specific PLG conversion benchmarks.",
+            "citations": [],
+            "insufficient_evidence": True,
+            "scope": "in_scope",
+            "follow_up_question": "Would you like to explore qualitative PLG frameworks instead?",
+        }),
+        latency_ms=100.0,
+    )
 
     service = ConversationService(
         retrieval_service=mock_retrieval,
@@ -279,12 +294,136 @@ async def test_conversation_service_abstains_when_evidence_empty():
         )
     ]
 
-    mock_gateway.generate.assert_not_called()
+    mock_gateway.generate.assert_called_once()
+    completed = next(e for e in events if e["event"] == "completed")
+    assert completed["data"]["insufficient_evidence"] is True
+    assert completed["data"]["citations"] == []
+    assert "does not contain" in completed["data"]["message"]["content"]
+    assert completed["data"]["message"]["status"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_fallback_abstention_on_empty_evidence_when_extraction_fails():
+    """Empty retrieval falls back to ABSTENTION_ANSWER if model extraction fails after repair."""
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    session_obj = ChatSession(id=session_id, user_id=user_id, title="New Chat")
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = []
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    mock_retrieval = AsyncMock()
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[],
+        insufficient_evidence=True,
+        query="What is the average PLG conversion benchmark?",
+    )
+
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.return_value = GatewayGenerationResult(
+        request_id="req-2",
+        session_id=str(session_id),
+        provider="local",
+        model_id="qwen2.5:7b-instruct-q4_K_M",
+        raw_response="not json at all",
+        latency_ms=100.0,
+    )
+
+    service = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    events = [
+        e
+        async for e in service.process_message_stream(
+            db=mock_db,
+            session_id=session_id,
+            user_id=user_id,
+            content="What is the average PLG conversion benchmark?",
+        )
+    ]
+
+    assert mock_gateway.generate.call_count == 2
     completed = next(e for e in events if e["event"] == "completed")
     assert completed["data"]["insufficient_evidence"] is True
     assert completed["data"]["citations"] == []
     assert "Not in the archive" in completed["data"]["message"]["content"]
     assert completed["data"]["message"]["status"] == "complete"
+
+
+@pytest.mark.asyncio
+async def test_conversation_service_strips_citations_from_history():
+    """Citations [E1] in history assistant messages must be stripped before prompt replay."""
+    user_id = uuid.uuid4()
+    session_id = uuid.uuid4()
+
+    mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    session_obj = ChatSession(id=session_id, user_id=user_id, title="New Chat")
+    mock_sess_res = MagicMock()
+    mock_sess_res.scalars.return_value.first.return_value = session_obj
+
+    prior_msg = Message(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        role="assistant",
+        content="Elena Verna noted [E1] that PLG requires virality [E2].",
+        status="complete",
+    )
+    mock_hist_res = MagicMock()
+    mock_hist_res.scalars.return_value.all.return_value = [prior_msg]
+    mock_db.execute.side_effect = [mock_sess_res, mock_hist_res]
+
+    mock_retrieval = AsyncMock()
+    mock_retrieval.search.return_value = RetrievalResult(
+        items=[],
+        insufficient_evidence=True,
+        query="Tell me more",
+    )
+
+    mock_gateway = AsyncMock()
+    mock_gateway.generate.return_value = GatewayGenerationResult(
+        request_id="req-3",
+        session_id=str(session_id),
+        provider="local",
+        model_id="qwen2.5:7b-instruct-q4_K_M",
+        raw_response=json.dumps({
+            "answer_markdown": "Here is more context.",
+            "citations": [],
+            "insufficient_evidence": False,
+        }),
+        latency_ms=100.0,
+    )
+
+    service = ConversationService(
+        retrieval_service=mock_retrieval,
+        gateway_client=mock_gateway,
+    )
+
+    events = [
+        e
+        async for e in service.process_message_stream(
+            db=mock_db,
+            session_id=session_id,
+            user_id=user_id,
+            content="Tell me more",
+        )
+    ]
+    assert len(events) > 0
+
+    mock_gateway.generate.assert_called_once()
+    passed_context = mock_gateway.generate.call_args.kwargs["conversation_context"]
+    assert len(passed_context) == 1
+    assert passed_context[0]["role"] == "assistant"
+    assert passed_context[0]["content"] == "Elena Verna noted that PLG requires virality."
+    assert "[E1]" not in passed_context[0]["content"]
+    assert "[E2]" not in passed_context[0]["content"]
 
 
 @pytest.mark.asyncio

@@ -92,9 +92,18 @@ class MessageRequest(BaseModel):
     model_id: str | None = None
     artifact_format: Literal["markdown", "html"] | None = None
     product_context: str | None = Field(None, max_length=4000)
+    target_word_count: int | None = Field(None, ge=200, le=3000)
     stream: bool = True
 
-    @field_validator("content", "product_context")
+    @field_validator("content")
+    @classmethod
+    def _validate_content_non_blank(cls, v: str) -> str:
+        v = _reject_invalid_control_chars(v)
+        if not v.strip():
+            raise ValueError("content must contain non-whitespace characters")
+        return v
+
+    @field_validator("product_context")
     @classmethod
     def _validate_no_control_chars(cls, v: str | None) -> str | None:
         if v is None:
@@ -103,6 +112,8 @@ class MessageRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_mode_format_combination(self) -> MessageRequest:
+        if self.target_word_count is not None and self.mode != "essay":
+            raise ValueError("target_word_count is only valid in essay mode")
         # Spec §6.3: artifact_format is only meaningful for artifact modes;
         # reject unsupported combinations instead of silently ignoring it.
         if self.artifact_format is not None and self.mode not in (
@@ -324,6 +335,7 @@ async def submit_message(
                 cloud_provider=payload.cloud_provider,
                 model_id=payload.model_id,
                 product_context=payload.product_context,
+                target_word_count=payload.target_word_count,
             )
             return result
         except Exception as exc:
@@ -363,6 +375,7 @@ async def submit_message(
                 cloud_provider=payload.cloud_provider,
                 model_id=payload.model_id,
                 product_context=payload.product_context,
+                target_word_count=payload.target_word_count,
                 request_id=request.state.request_id,
             ):
                 event_type = event.get("event", "message")

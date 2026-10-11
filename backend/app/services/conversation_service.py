@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import re
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
@@ -63,6 +64,8 @@ ABSTENTION_FOLLOW_UP = (
     "Can you reframe the question around a specific growth practice, "
     "framework, or guest story from the podcast?"
 )
+
+_CITATION_MARKER_RE = re.compile(r"\s?\[(?:E\d+)\]")
 
 
 class ModelNotAllowedError(ValueError):
@@ -179,6 +182,7 @@ class ConversationService:
         cloud_provider: str | None = None,
         model_id: str | None = None,
         product_context: str | None = None,
+        target_word_count: int | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         """
@@ -195,6 +199,7 @@ class ConversationService:
             cloud_provider=cloud_provider,
             model_id=model_id,
             product_context=product_context,
+            target_word_count=target_word_count,
             request_id=request_id,
         ):
             if event["event"] == "completed":
@@ -248,6 +253,7 @@ class ConversationService:
         cloud_provider: str | None = None,
         model_id: str | None = None,
         product_context: str | None = None,
+        target_word_count: int | None = None,
         request_id: str | None = None,
         is_disconnected: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
@@ -367,7 +373,15 @@ class ConversationService:
         history_result = await db.execute(stmt)
         prior_messages = list(reversed(history_result.scalars().all()))
         conversation_context = [
-            {"role": m.role, "content": m.content} for m in prior_messages
+            {
+                "role": m.role,
+                "content": (
+                    _CITATION_MARKER_RE.sub("", m.content).strip()
+                    if m.role == "assistant" and m.content
+                    else m.content
+                ),
+            }
+            for m in prior_messages
         ]
 
         try:
@@ -394,39 +408,78 @@ class ConversationService:
             evidence_map = {e.evidence_id: e for e in evidence_items}
 
             # -------------------------------------------------------------
-            # STAGES 3–4: DRAFTING + VALIDATING (skipped on abstention)
+            # STAGES 3–4: DRAFTING + VALIDATING
             # -------------------------------------------------------------
-            # Spec §7.6/§11.2/§12.1: when retrieval yields no usable
-            # evidence the pipeline must NOT call generation. Abstain with
-            # an explicit notice instead of letting the model improvise.
-            if retrieval_res.insufficient_evidence or not evidence_items:
+            yield {
+                "event": "stage",
+                "data": {"stage": "drafting", "label": "Synthesizing answer..."},
+            }
+
+            evidence_block = format_evidence_block(evidence_items)
+            system_prompt = build_system_prompt(
+                mode=mode,
+                evidence_block=evidence_block,
+                product_context=product_context,
+                essay_word_target=target_word_count,
+            )
+
+            # Call internal Agent Gateway
+            gw_result = await self._run_cancellable(
+                self.gateway_client.generate(
+                    session_id=str(session_id),
+                    current_user_message=content,
+                    mode=mode,
+                    provider=provider,
+                    cloud_provider=effective_cloud_provider,
+                    model_id=effective_model_id,
+                    conversation_context=conversation_context,
+                    evidence=evidence_items,
+                    product_context=product_context,
+                    request_id=run_id,
+                    system_prompt=system_prompt,
+                ),
+                is_disconnected=is_disconnected,
+            )
+
+            yield {
+                "event": "stage",
+                "data": {
+                    "stage": "validating",
+                    "label": "Validating citations & grounding...",
+                },
+            }
+
+            # Spec §7.6/§11.2: at most ONE constrained repair attempt
+            # for a corrupt model response, then surface a recoverable
+            # error. No unbounded retries.
+            try:
+                validated_any = validate_agent_response(
+                    raw_response_text=gw_result.raw_response,
+                    mode=mode,
+                    valid_evidence_ids=valid_evidence_ids,
+                    essay_word_target=target_word_count,
+                )
+            except StructuredExtractionError as first_error:
+                logger.warning(
+                    "Run %s: initial model output failed validation (%s); "
+                    "attempting one constrained repair",
+                    run_id,
+                    first_error,
+                )
                 yield {
                     "event": "stage",
                     "data": {
                         "stage": "validating",
-                        "label": "Checking evidence sufficiency...",
+                        "label": "Repairing response format...",
                     },
                 }
-                validated_any: Any = ValidatedResearchResponse(
-                    answer_markdown=ABSTENTION_ANSWER,
-                    citations=[],
-                    insufficient_evidence=True,
-                    follow_up_question=ABSTENTION_FOLLOW_UP,
-                )
-            else:
-                yield {
-                    "event": "stage",
-                    "data": {"stage": "drafting", "label": "Synthesizing answer..."},
-                }
-
-                evidence_block = format_evidence_block(evidence_items)
-                system_prompt = build_system_prompt(
+                repair_prompt = build_repair_system_prompt(
                     mode=mode,
                     evidence_block=evidence_block,
                     product_context=product_context,
+                    validation_error=str(first_error),
+                    essay_word_target=target_word_count,
                 )
-
-                # Call internal Agent Gateway
                 gw_result = await self._run_cancellable(
                     self.gateway_client.generate(
                         session_id=str(session_id),
@@ -439,69 +492,31 @@ class ConversationService:
                         evidence=evidence_items,
                         product_context=product_context,
                         request_id=run_id,
-                        system_prompt=system_prompt,
+                        system_prompt=repair_prompt,
                     ),
                     is_disconnected=is_disconnected,
                 )
-
-                yield {
-                    "event": "stage",
-                    "data": {
-                        "stage": "validating",
-                        "label": "Validating citations & grounding...",
-                    },
-                }
-
-                # Spec §7.6/§11.2: at most ONE constrained repair attempt
-                # for a corrupt model response, then surface a recoverable
-                # error. No unbounded retries.
                 try:
                     validated_any = validate_agent_response(
                         raw_response_text=gw_result.raw_response,
                         mode=mode,
                         valid_evidence_ids=valid_evidence_ids,
+                        essay_word_target=target_word_count,
                     )
-                except StructuredExtractionError as first_error:
-                    logger.warning(
-                        "Run %s: initial model output failed validation (%s); "
-                        "attempting one constrained repair",
-                        run_id,
-                        first_error,
-                    )
-                    yield {
-                        "event": "stage",
-                        "data": {
-                            "stage": "validating",
-                            "label": "Repairing response format...",
-                        },
-                    }
-                    repair_prompt = build_repair_system_prompt(
-                        mode=mode,
-                        evidence_block=evidence_block,
-                        product_context=product_context,
-                        validation_error=str(first_error),
-                    )
-                    gw_result = await self._run_cancellable(
-                        self.gateway_client.generate(
-                            session_id=str(session_id),
-                            current_user_message=content,
-                            mode=mode,
-                            provider=provider,
-                            cloud_provider=effective_cloud_provider,
-                            model_id=effective_model_id,
-                            conversation_context=conversation_context,
-                            evidence=evidence_items,
-                            product_context=product_context,
-                            request_id=run_id,
-                            system_prompt=repair_prompt,
-                        ),
-                        is_disconnected=is_disconnected,
-                    )
-                    validated_any = validate_agent_response(
-                        raw_response_text=gw_result.raw_response,
-                        mode=mode,
-                        valid_evidence_ids=valid_evidence_ids,
-                    )
+                except StructuredExtractionError:
+                    if not evidence_items and mode == "research":
+                        logger.info(
+                            "Run %s: generation repair failed on empty evidence; falling back to abstention",
+                            run_id,
+                        )
+                        validated_any = ValidatedResearchResponse(
+                            answer_markdown=ABSTENTION_ANSWER,
+                            citations=[],
+                            insufficient_evidence=True,
+                            follow_up_question=ABSTENTION_FOLLOW_UP,
+                        )
+                    else:
+                        raise
 
             validated = validated_any
 
