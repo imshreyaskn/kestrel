@@ -397,13 +397,3 @@ async def submit_message(
             "X-Accel-Buffering": "no",
         },
     )
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
