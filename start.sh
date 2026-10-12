@@ -26,6 +26,9 @@ step "Checking Docker Engine..."
 if ! command -v docker &>/dev/null; then
     fatal "Docker is not installed or not in PATH."
 fi
+if ! command -v curl &>/dev/null; then
+    fatal "curl is not installed or not in PATH."
+fi
 if ! docker info &>/dev/null; then
     fatal "Docker daemon is not running. Please start Docker and retry."
 fi
@@ -37,6 +40,19 @@ OLLAMA_ONLINE=0
 if curl -s -f -m 3 http://localhost:11434/api/tags &>/dev/null; then
     OLLAMA_ONLINE=1
     success "Host Ollama is online."
+    if command -v ollama &>/dev/null; then
+        INSTALLED_MODELS=$(ollama list 2>/dev/null || echo "")
+        for MODEL in "qwen2.5:1.5b" "embeddinggemma"; do
+            if echo "$INSTALLED_MODELS" | grep -q "$MODEL"; then
+                success "Model ${MODEL} is present."
+            else
+                warn "Model ${MODEL} not found in local Ollama. Pulling..."
+                ollama pull "$MODEL" && success "Model ${MODEL} pulled successfully." || warn "Failed to pull ${MODEL}."
+            fi
+        done
+    else
+        warn "Ollama CLI not found on PATH. Automatic model pull skipped."
+    fi
 else
     warn "Host Ollama not detected at http://localhost:11434. Local inference will be unavailable until started."
 fi
@@ -53,7 +69,7 @@ if [ ! -f .env ]; then
 fi
 
 # Ensure INTERNAL_SERVICE_TOKEN is set
-if ! grep -q "^INTERNAL_SERVICE_TOKEN=" .env || grep -q "INTERNAL_SERVICE_TOKEN=dev-internal-token-change-me" .env; then
+if ! grep -q "^INTERNAL_SERVICE_TOKEN=." .env || grep -Eq "^INTERNAL_SERVICE_TOKEN=(dev-internal-token-change-me|replace-with-a-long-random-local-token)" .env; then
     TOKEN=$(openssl rand -hex 32 2>/dev/null || date +%s%N | sha256sum | head -c 64)
     if grep -q "^INTERNAL_SERVICE_TOKEN=" .env; then
         sed -i.bak "s/^INTERNAL_SERVICE_TOKEN=.*/INTERNAL_SERVICE_TOKEN=${TOKEN}/" .env && rm -f .env.bak
@@ -108,17 +124,15 @@ success "API is ready."
 # 7. Check knowledge base
 step "Checking transcript knowledge base..."
 CHUNKS=$(curl -s http://localhost:8000/api/v1/ingestion/status 2>/dev/null | grep -o '"total_chunks":[0-9]*' | cut -d: -f2 || echo "0")
+SOURCES=$(curl -s http://localhost:8000/api/v1/ingestion/status 2>/dev/null | grep -o '"active_sources":[0-9]*' | cut -d: -f2 || echo "?")
 if [ "${CHUNKS:-0}" -eq "0" ]; then
     warn "Knowledge base is empty. Syncing and indexing Lenny Podcast transcripts..."
     docker compose exec -T api python -m backend.app.ingestion.cli sync
     docker compose exec -T api python -m backend.app.ingestion.cli index
     success "Knowledge base indexed."
 else
-    success "Knowledge base ready (${CHUNKS} chunks indexed across 303 episodes)."
+    success "Knowledge base ready (${CHUNKS} chunks indexed across ${SOURCES} episodes)."
 fi
-    fatal "API failed readiness check within 30 seconds."
-fi
-success "API is ready."
 
 echo -e "\n${GREEN}========================================================================${NC}"
 echo -e "${GREEN}  ✓ APPLICATION ONLINE - EDITORIAL RESEARCH STUDIO IS READY            ${NC}"
@@ -127,3 +141,11 @@ echo -e "  Studio Web UI:         ${CYAN}http://localhost:5173${NC}"
 echo -e "  Backend API Service:   ${CYAN}http://localhost:8000${NC}"
 echo -e "  OpenAPI Documentation: ${CYAN}http://localhost:8000/docs${NC}"
 echo -e "${GREEN}========================================================================${NC}"
+
+if [ "${NO_BROWSER:-0}" != "1" ]; then
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "http://localhost:5173" &>/dev/null &
+    elif command -v open &>/dev/null; then
+        open "http://localhost:5173" &>/dev/null &
+    fi
+fi
