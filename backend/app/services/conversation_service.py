@@ -339,6 +339,7 @@ class ConversationService:
         product_context: str | None = None,
         target_word_count: int | None = None,
         request_id: str | None = None,
+        idempotency_key: str | None = None,
         is_disconnected: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
@@ -402,9 +403,8 @@ class ConversationService:
                 }
                 return
 
-            # 2. Persist user message. The assistant message is timestamped one
-            # microsecond later so chronological ordering of the pair is
-            # deterministic (created_at is otherwise identical for both rows).
+            # 2. Persist user message. Ordering is now guaranteed by the
+            # monotonic `seq` IDENTITY column (BA17) — no timestamp hack needed.
             user_message = Message(
                 id=uuid.uuid4(),
                 session_id=session_id,
@@ -412,15 +412,15 @@ class ConversationService:
                 content=content.strip(),
                 status="complete",
                 workflow_mode=mode,
-                mode=mode,
                 provider=provider,
                 model_id=effective_model_id,
+                idempotency_key=idempotency_key,
                 created_at=now,
                 completed_at=now,
             )
             db.add(user_message)
 
-            # 3. Insert pending assistant message
+            # 3. Insert pending assistant message. seq is assigned by the DB.
             assistant_message = Message(
                 id=uuid.uuid4(),
                 session_id=session_id,
@@ -428,10 +428,9 @@ class ConversationService:
                 content="",
                 status="pending",
                 workflow_mode=mode,
-                mode=mode,
                 provider=provider,
                 model_id=effective_model_id,
-                created_at=now + datetime.timedelta(microseconds=1),
+                created_at=now,
             )
             db.add(assistant_message)
             await db.commit()

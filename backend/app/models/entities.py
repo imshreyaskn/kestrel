@@ -37,9 +37,6 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(
         String(255), unique=True, nullable=True, index=True
     )
-    full_name: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )  # legacy compatibility
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict
     )
@@ -76,9 +73,6 @@ class ChatSession(Base):
     provider_preference: Mapped[str] = mapped_column(
         Text, nullable=False, default="local"
     )
-    provider: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="local"
-    )  # legacy compatibility
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -128,14 +122,17 @@ class Message(Base):
         nullable=False,
         index=True,
     )
+    seq: Mapped[int] = mapped_column(
+        sa.BigInteger, sa.Identity(start=1), nullable=False
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     workflow_mode: Mapped[str | None] = mapped_column(
         Text, nullable=True, default="research"
     )
-    mode: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="research"
-    )  # legacy compatibility
     provider: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
     model_id: Mapped[str] = mapped_column(
         String(64), nullable=False, default="qwen2.5:1.5b"
@@ -167,6 +164,14 @@ class Message(Base):
         CheckConstraint(
             "provider IS NULL OR provider IN ('local', 'cloud')",
             name="chk_messages_provider",
+        ),
+        Index("ix_messages_session_seq", "session_id", "seq"),
+        Index(
+            "ix_messages_session_idempotency",
+            "session_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=sa.text("idempotency_key IS NOT NULL"),
         ),
     )
 

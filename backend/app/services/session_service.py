@@ -38,7 +38,6 @@ class SessionService:
             user_id=user_id,
             title=title,
             provider_preference=provider_preference,
-            provider=provider_preference,
             created_at=now,
             updated_at=now,
             last_message_at=now,
@@ -119,11 +118,11 @@ class SessionService:
         if not session:
             return []
 
-        # 2. Load messages with joined sources (newest-first query, reversed for chronological display)
+        # 2. Load messages with joined sources (monotonic newest-first query by seq, reversed for chronological display)
         stmt = (
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.created_at.desc(), Message.id.desc())
+            .order_by(Message.seq.desc())
             .offset(offset)
             .limit(limit)
             .options(
@@ -209,6 +208,49 @@ class SessionService:
         result = await db.execute(stmt)
         await db.commit()
         return int(result.rowcount or 0)
+
+    @staticmethod
+    async def get_message_by_idempotency_key(
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        idempotency_key: str,
+    ) -> Message | None:
+        """Fetch user message by idempotency key within session (BA15)."""
+        stmt = (
+            select(Message)
+            .where(
+                Message.session_id == session_id,
+                Message.idempotency_key == idempotency_key,
+            )
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    @staticmethod
+    async def get_assistant_reply_for_user_message(
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        user_message_seq: int,
+    ) -> Message | None:
+        """Fetch the corresponding assistant reply created in the same turn right after user message."""
+        stmt = (
+            select(Message)
+            .where(
+                Message.session_id == session_id,
+                Message.seq > user_message_seq,
+                Message.role == "assistant",
+            )
+            .order_by(Message.seq.asc())
+            .limit(1)
+            .options(
+                selectinload(Message.sources)
+                .selectinload(MessageSource.chunk)
+                .selectinload(TranscriptChunk.source)
+            )
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
 
 
 default_session_service = SessionService()

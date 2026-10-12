@@ -86,6 +86,24 @@ Final section
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
   });
+
+  it('renders citation markers as crisp editorial star references without brackets or inline style collisions', () => {
+    const md = 'Acquisition requires both viral loops [1] and early retention [E2].';
+    const html = renderToStaticMarkup(<MarkdownViewer content={md} />);
+    expect(html).toContain('<span class="sn-ref" aria-label="Citation 1"><span class="sn-star" aria-hidden="true">✳</span><span class="sn-num">1</span></span>');
+    expect(html).toContain('<span class="sn-ref" aria-label="Citation 2"><span class="sn-star" aria-hidden="true">✳</span><span class="sn-num">2</span></span>');
+    expect(html).not.toContain('[1]');
+    expect(html).not.toContain('[2]');
+    expect(html).not.toContain('style="color:var(--accent)"');
+  });
+
+  it('supports clustered citation markers [1, 2] and preserves standard bracketed prose', () => {
+    const md = 'Multi-touch attribution [1, 2] is vital. [Note: operators must verify].';
+    const html = renderToStaticMarkup(<MarkdownViewer content={md} />);
+    expect(html).toContain('<span class="sn-ref" aria-label="Citation 1"><span class="sn-star" aria-hidden="true">✳</span><span class="sn-num">1</span></span>');
+    expect(html).toContain('<span class="sn-ref" aria-label="Citation 2"><span class="sn-star" aria-hidden="true">✳</span><span class="sn-num">2</span></span>');
+    expect(html).toContain('[Note: operators must verify]');
+  });
 });
 
 describe('PlateAside margin miniature rendering (AR2)', () => {

@@ -16,6 +16,7 @@ interface ManuscriptProps {
   onExaminePlate: (artId: string, fromRect?: DOMRect) => void;
   onPrefillQuery: (text: string) => void;
   onRetryLast: () => void;
+  onRecompose?: (failedEntryId: string, text: string) => void;
 }
 
 /**
@@ -46,7 +47,8 @@ const RichText: React.FC<{ text: string; citations?: Citation[] }> = ({ text, ci
               data-n={cit.refIndex}
               aria-label={`Read evidence note ${cit.refIndex} — ${cit.speaker}`}
             >
-              {cit.refIndex}
+              <span className="sn-star" aria-hidden="true">✳</span>
+              <span className="sn-num">{cit.refIndex}</span>
             </button>
             <span className="sn-peek" role="tooltip" aria-hidden="true">
               <span className="sn-peek-who">
@@ -91,6 +93,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
   onExaminePlate,
   onPrefillQuery,
   onRetryLast,
+  onRecompose,
 }) => {
   const prevEntryCount = useRef(entries.length);
   const entriesRef = useRef<HTMLDivElement>(null);
@@ -188,9 +191,15 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                         type="button"
                         className="tbtn"
                         onClick={() => {
-                          if (not.action?.actionKey === 'retry') onRetryLast();
-                          else if (not.action?.actionKey === 'prefill')
+                          if (not.action?.actionKey === 'recompose' || not.action?.actionKey === 'retry') {
+                            if (onRecompose) {
+                              onRecompose(entry.id, not.action.prefill || '');
+                            } else {
+                              onRetryLast();
+                            }
+                          } else if (not.action?.actionKey === 'prefill') {
                             onPrefillQuery(not.action?.prefill || '');
+                          }
                         }}
                       >
                         {not.action.label}

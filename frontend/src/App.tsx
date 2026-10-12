@@ -26,6 +26,7 @@ import { PlateViewerModal } from './components/PlateViewerModal';
 import { LeaderLines } from './components/LeaderLines';
 import { Toasts } from './components/Toasts';
 import { StatesTray, StateKey } from './components/StatesTray';
+import { ArtifactsDock } from './components/ArtifactsDock';
 
 const COMPOSING_STAGES: Record<ComposeMode, Array<[string, string]>> = {
   research: [
@@ -179,7 +180,7 @@ export const App: React.FC = () => {
               'Nothing was bound to this session — the partial draft was discarded, and no citation was recorded.',
             ],
             action: lastRunRef.current
-              ? { label: 'Recompose →', actionKey: 'prefill', prefill: lastRunRef.current.text }
+              ? { label: 'Recompose →', actionKey: 'recompose', prefill: lastRunRef.current.text }
               : undefined,
             stamp: 'struck by the reader · nothing persisted',
           },
@@ -456,7 +457,7 @@ export const App: React.FC = () => {
                     ],
                     action: {
                       label: 'Recompose →',
-                      actionKey: 'prefill',
+                      actionKey: 'recompose',
                       prefill: text,
                     },
                     stamp: `${stampModel} · 0 citations · the question outran the evidence`,
@@ -606,7 +607,7 @@ export const App: React.FC = () => {
                 paragraphs: [err.message],
                 action: {
                   label: 'Recompose →',
-                  actionKey: 'prefill',
+                  actionKey: 'recompose',
                   prefill: text,
                 },
                 stamp: `${err.code} · nothing was persisted`,
@@ -708,6 +709,31 @@ export const App: React.FC = () => {
       handleSubmitQuery(last.text, last.mode, last.format);
     }
   }, [handleSubmitQuery]);
+
+  // Recompose a failed run: replaces the failed message directly instead of appending a new one.
+  const handleRecompose = useCallback(
+    (failedEntryId: string, text: string) => {
+      const currentSession = activeSession;
+      if (!currentSession) return;
+      const last = lastRunRef.current;
+      const mode = last?.mode || 'research';
+      const format = last?.format || 'markdown';
+      const queryText = text || last?.text || '';
+
+      // Replace the failed message by removing it from the session entries
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === currentSession.id
+            ? { ...s, entries: s.entries.filter((e) => e.id !== failedEntryId) }
+            : s
+        )
+      );
+
+      // Re-run the composing pipeline with the query
+      runComposingPipeline(currentSession, queryText, mode, format);
+    },
+    [activeSession, runComposingPipeline]
+  );
 
   // ---------------------------------------------------------------
   // Growth Brief — "Bind impression" (optimistic concurrency).
@@ -899,10 +925,6 @@ export const App: React.FC = () => {
         providers={providers}
         onOpenMobileMenu={() => setIsMobileRailOpen(true)}
         isComposing={isComposing}
-        activeBrief={activeSession?.activeBrief || activeBrief}
-        onOpenBrief={handleOpenBrief}
-        artifacts={activeSession?.artifacts || []}
-        onExaminePlate={handleExaminePlate}
       />
 
       {/* Book-spine Session Index Rail */}
@@ -914,6 +936,20 @@ export const App: React.FC = () => {
         onNewDossier={handleNewDossier}
         isMobileOpen={isMobileRailOpen}
         onCloseMobile={() => setIsMobileRailOpen(false)}
+      />
+
+      {/* Right-side Folio Deliverables Dock */}
+      <ArtifactsDock
+        activeBrief={activeSession?.activeBrief || activeBrief}
+        artifacts={[
+          ...(activeSession?.artifacts || []),
+          ...(activeSession?.entries
+            ?.map((e) => e.artifact)
+            .filter((a): a is NonNullable<typeof a> => !!a)
+            .filter((a) => !(activeSession?.artifacts || []).some((s) => s.id === a.id)) || []),
+        ]}
+        onOpenBrief={handleOpenBrief}
+        onExaminePlate={handleExaminePlate}
       />
 
       {/* Continuous Manuscript Sheet */}
@@ -955,6 +991,7 @@ export const App: React.FC = () => {
                 setComposerPrefill(prefill);
               }}
               onRetryLast={handleRetryLast}
+              onRecompose={handleRecompose}
             />
           )}
         </div>

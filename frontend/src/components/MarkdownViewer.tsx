@@ -24,8 +24,8 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, classNa
     // 3. Italic: \*([^*]+?)\*
     // 4. Inline code: `([^`]+)`
     // 5. Links: \[([^\]]+)\]\((https?:\/\/[^\s)]+)\)
-    // 6. Citation tags: \[E(\d+)\] or \[(\d+)\]
-    const regex = /(!\[[^\]]*\]\(https?:\/\/[^\s)]+\)|\*\*.*?\*\*|\*[^*]+?\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\[E?\d+\])/g;
+    // 6. Citation tags: \[E(\d+)\] or \[(\d+)\] or clusters \[E?(\d+)(?:,\s*E?(\d+))*\]
+    const regex = /(!\[[^\]]*\]\(https?:\/\/[^\s)]+\)|\*\*.*?\*\*|\*[^*]+?\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\[E?\d+(?:\s*,\s*E?\d+)*\])/g;
 
     let match: RegExpExecArray | null;
     let lastIndex = 0;
@@ -79,17 +79,22 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, classNa
         } else {
           nodes.push(token);
         }
-      } else if (/^\[E?\d+\]$/.test(token)) {
-        const num = token.replace(/[^0-9]/g, '');
-        nodes.push(
-          <sup
-            key={keyIdx++}
-            className="sn-ref"
-            style={{ color: 'var(--accent)', fontWeight: 600, marginLeft: '2px' }}
-          >
-            [{num}]
-          </sup>
-        );
+      } else if (/^\[E?\d+(?:\s*,\s*E?\d+)*\]$/.test(token)) {
+        const rawTokens = token.slice(1, -1).split(',').map((s) => s.trim().replace(/^E/i, ''));
+        rawTokens.forEach((num) => {
+          if (num) {
+            nodes.push(
+              <span
+                key={keyIdx++}
+                className="sn-ref"
+                aria-label={`Citation ${num}`}
+              >
+                <span className="sn-star" aria-hidden="true">✳</span>
+                <span className="sn-num">{num}</span>
+              </span>
+            );
+          }
+        });
       } else {
         nodes.push(token);
       }
