@@ -58,53 +58,69 @@ flowchart TD
 
 ## 2. Quickstart & One-Command Startup
 
-### Prerequisites
-- [Docker & Docker Desktop](https://www.docker.com/) (recommended) OR Python 3.12+, Node.js 20+, and PostgreSQL 16.
-- [Ollama](https://ollama.com/) running on the host machine for local offline inference.
+### The One-Command Bootstrap (Recommended)
 
-### Step 1: Clone and Configure Environment
+Kestrel provides single-command bootstrap scripts conforming to IMPLEMENTATION_SPEC §13.2 that automate prerequisites checking, model readiness, environment configuration, database migrations, knowledge-base indexing, and browser launch:
+
+**On Windows (PowerShell / Command Prompt):**
+```powershell
+.\start.ps1
+# or from cmd:
+start.bat
+```
+
+**On Linux / macOS / WSL (Bash):**
 ```bash
-git clone https://github.com/imshreyaskn/kestrel.git
-cd kestrel
+./start.sh
+# or via Makefile:
+make up
+```
+
+#### What the One-Command Script Does Automatically:
+1. **Engine Check:** Verifies Docker Engine is running.
+2. **Ollama Check:** Tests host Ollama connectivity at `http://localhost:11434`; pulls required models (`qwen2.5:1.5b` and `embeddinggemma`) if missing.
+3. **Environment Init:** Copies `.env.example` to `.env` if missing and generates a cryptographically secure 32-byte `INTERNAL_SERVICE_TOKEN`.
+4. **Topology Start:** Launches container services (`db`, `agent-gateway`, `api`, `frontend`).
+5. **Database Migration:** Waits for `kestrel-db` healthy status and applies Alembic migrations to `head`.
+6. **Knowledge Base Verification:** Checks indexed chunks; automatically syncs and indexes Lenny's Podcast transcripts if database is unseeded.
+7. **Readiness Probe:** Polls `/api/v1/health/ready` until all components are operational.
+8. **Studio Launch:** Opens [http://localhost:5173](http://localhost:5173) in your default browser.
+
+---
+
+### Manual Setup (Step-by-Step Alternative)
+
+If you prefer step-by-step control:
+
+#### Step 1: Configure Environment
+```bash
 cp .env.example .env
 ```
 
-If using cloud inference, configure your API key in `.env`:
-```ini
-# Optional Cloud Provider
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-### Step 2: Prepare Host Ollama Models (Local Mode)
-Pull the required local chat and embedding models:
+#### Step 2: Prepare Host Ollama Models (Local Mode)
 ```bash
 ollama pull qwen2.5:1.5b
 ollama pull embeddinggemma
 ```
 
-### Step 3: Launch with Docker Compose
+#### Step 3: Launch with Docker Compose
 ```bash
-docker compose up --build -d
+docker compose up -d
 ```
 Alembic migrations are applied automatically when the `api` container boots
-(`alembic upgrade head` runs before `uvicorn`), so a fresh clone starts with
-a fully migrated schema.
+(`alembic upgrade head` runs before `uvicorn`).
 
 Services will start at:
 - **Workbench Frontend:** [http://localhost:5173](http://localhost:5173)
 - **FastAPI Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **API Health & Readiness:** [http://localhost:8000/api/v1/health/ready](http://localhost:8000/api/v1/health/ready)
 
 The PostgreSQL and agent-gateway services are **internal only** (no host
-ports by default, per the implementation spec). Gateway health is visible
-through the API readiness probe at
-[http://localhost:8000/api/v1/health/ready](http://localhost:8000/api/v1/health/ready).
-For local debugging ports, run:
+ports by default, per the implementation spec). For local debugging ports, run:
 `docker compose -f docker-compose.yml -f compose.dev.yml up -d`.
 
-### Step 4: Ingest Transcript Knowledge Base (First Run)
-To sync and ingest transcripts into PostgreSQL with 768-dim embeddings:
+#### Step 4: Ingest Transcript Knowledge Base (If unindexed)
 ```bash
-# Run ingestion inside the running API container
 docker compose exec api python -m backend.app.ingestion.cli sync
 docker compose exec api python -m backend.app.ingestion.cli index
 ```
@@ -221,3 +237,59 @@ Detailed verification transcripts are preserved in [`agent-transcripts/`](file:/
    - The preview iframe enforces `sandbox=""` and `script-src 'none'`. This deliberately prevents interactive JavaScript execution (charts, calculators) in v1 to ensure strict zero-XSS safety. Visual deliverables rely entirely on responsive HTML and scoped inline CSS.
 3. **Single-User Demo Scope:**
    - The system is configured for local evaluation with a seeded demo user (`DEMO_USER_ID`). Enterprise multi-tenant authentication and team workspaces are planned for v2.
+
+---
+
+## 7. Forward Deployed Engineer (FDE) Operational Handoff Guide
+
+This system is engineered for zero-friction handoff to another engineering team to operate, test, troubleshoot, and extend.
+
+### 7.1 One-Command Startup
+- **Windows:** Run `.\start.ps1` (or `start.bat`).
+- **macOS / Linux / CI:** Run `./start.sh` (or `make up` / `make demo`).
+- The script checks host Docker and Ollama availability, pulls missing local models with real download feedback, copies `.env.example` with cryptographically secure tokens, starts Compose services, runs Alembic migrations, verifies knowledge base indexing, probes API readiness, and opens the studio UI.
+
+### 7.2 Configuration & Secret Management
+- **Safe Defaults:** [`.env.example`](file:///e:/Drizzle/Oogway/.env.example) contains safe local defaults pointing to internal container network names and host Ollama.
+- **Zero Committed Secrets:** `.env` is strictly `.gitignore`'d. Provider API keys (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) stay server-side inside `agent-gateway` and are never embedded into frontend bundles or client responses.
+- **Internal Service Authentication:** Communication between the FastAPI application core and the internal Node.js Agent Gateway is secured via a shared bearer token (`INTERNAL_SERVICE_TOKEN`).
+
+### 7.3 Observability & Structured Diagnostics
+- **Structured JSON Logging:** FastAPI emits machine-readable JSON logs via [`JsonLogFormatter`](file:///e:/Drizzle/Oogway/backend/app/main.py) with correlation IDs (`x-request-id`, `x-correlation-id`), duration in milliseconds, HTTP method/path, and status code.
+- **Retrieval & Latency Metadata:** Assistant messages store detailed retrieval metrics in `metadata_`:
+  - `evidence_rrf_scores`: Exact Reciprocal-Rank Fusion score for each retrieved candidate.
+  - `gateway_latency_ms`: Generation latency in milliseconds from the Pi agent runtime.
+  - `token_usage`: Prompt, completion, and total tokens reported by the model.
+- **Live Health Diagnostics:**
+  - `GET /api/v1/health/live`: Process liveness check.
+  - `GET /api/v1/health/ready`: Deep dependency readiness check testing PostgreSQL connection, host Ollama version, and internal Agent Gateway reachability.
+  - `GET /api/v1/ingestion/status`: Real-time knowledge base statistics (active sources, total indexed chunks, latest commit hash).
+
+### 7.4 Resilience & Graceful Degradation
+| Failure Scenario | How the System Handles It |
+|:---|:---|
+| **Missing Cloud API Key** | The router inspects configured keys before streaming; fails fast with safe 422 error and instructions to switch provider or configure key in `.env`. |
+| **Unavailable / Offline Ollama** | Detected during startup script and readiness probe; UI Running Head indicators reflect status; fails fast with pre-classified safe error rather than hanging. |
+| **Model Generation Timeout** | Enforces a strict 120-second timeout (`GENERATION_TIMEOUT_SECONDS`); cancels hanging tasks cleanly and returns `GENERATION_TIMEOUT` (504). |
+| **Proxy Idle Disconnection** | The SSE streaming generator emits periodic `: ping\n\n` heartbeat comments every 15 seconds during model thinking silence to prevent reverse proxies (Nginx, Cloudflare) from dropping long-running streams. |
+| **Empty Retrieval / Archive Gaps** | When evidence is insufficient, the system abstains with `insufficient_evidence: true`, displays a clear *"Not in archive"* banner, and never hallucinates facts or fake episode citations. |
+| **Database Disconnection / Server Crash** | On startup, `reconcile_stale_pending_messages()` automatically sweeps messages stuck in `pending` and marks them as `failed` with code `SERVER_RESTARTED`. |
+| **Concurrent Brief / Artifact Edits** | SQLAlchemy `version_id_col` enforces atomic optimistic locking; concurrent conflicting updates raise `StaleDataError` mapped to `HTTP 409 VERSION_CONFLICT`. |
+| **Duplicate Message Submission** | Requests can pass `Idempotency-Key` or `X-Idempotency-Key` headers; replaying an identical key returns the cached completed turn rather than creating duplicate work. |
+
+---
+
+## 8. Knowledge Base & Transcript Persistence Lifecycle
+
+### How Ingested Transcripts Survive Across Restarts
+1. **Docker Named Volume Persistence:**
+   - PostgreSQL stores all cluster data in a dedicated named volume (`postgres_data:/var/lib/postgresql/data`).
+   - Named volumes exist independently of container lifecycles. Running `docker compose down`, rebuilding images, or restarting the Docker daemon does **not** erase the database. The 303 episodes and 16,964 chunks remain fully preserved on disk.
+2. **PostgreSQL Relational & Vector Storage:**
+   - Episode metadata is persisted in `transcript_sources` (`source_key`, `title`, `guest`, `episode_url`, `publish_date`, `content_hash`).
+   - Verbatim text and 768-dimensional vectors are stored in `transcript_chunks` with an HNSW cosine index (`vector_cosine_ops`) for sub-millisecond retrieval.
+3. **Idempotent Ingestion & Soft-Delete Citation Protection:**
+   - When running `python -m backend.app.ingestion.cli index`, files are checked against stored MD5 `content_hash` values. Unchanged episodes are skipped in milliseconds.
+   - If an episode's transcript is modified upstream, existing chunks are **soft-deactivated** (`is_active = FALSE`) instead of cascade-deleted. This guarantees that historical chat messages and saved Growth Briefs citing those chunks **never break** and continue to render their verbatim excerpts in margin sidenotes.
+4. **Local Transcript Cache:**
+   - Raw upstream transcripts are mirrored in `transcripts-cache/` on disk, allowing offline re-indexing without re-downloading from GitHub.
