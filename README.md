@@ -16,7 +16,7 @@
 <a href="https://github.com/imshreyaskn/kestrel">
   <img src="https://img.shields.io/badge/GitHub-imshreyaskn%2Fkestrel-4A1F3D?style=for-the-badge" />
 </a>
-<img src="https://img.shields.io/badge/tests-176%20backend%20·%20103%20frontend-3D5A4A?style=for-the-badge" />
+<img src="https://img.shields.io/badge/tests-176%20backend%20·%20102%20frontend-3D5A4A?style=for-the-badge" />
 <img src="https://img.shields.io/badge/Python-3.13%20·%20FastAPI-161614?style=for-the-badge" />
 <img src="https://img.shields.io/badge/Node-22%20·%20Pi%20AI-161614?style=for-the-badge" />
 <img src="https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4A1F3D?style=for-the-badge" />
@@ -105,7 +105,6 @@ The frontend is an **editorial research dossier** — a column of prose with a m
 * **The Fold** — Growth Briefs open as a 3D paper fold with editable sections, evidence/synthesis/user-context badges, and optimistic version locking.
 * **Plates & Sandboxed Mermaid** — Markdown and HTML artifacts render beside the chat in the margin and in a full viewer with Preview/Source toggle. Mermaid diagrams in Markdown plates render inside opaque-origin sandboxed iframes (`sandbox="allow-scripts"` with CSP `default-src 'none'; style-src 'unsafe-inline'`), styled to Kestrel's editorial palette.
 * **Continuous Folio & Endmark** — rationalized bottom padding ensures clean editorial breathing room above the fixed bottom composer bar without awkward empty whitespace below the `End of folio` stamp.
-* **Design tour** — a states tray previews every key UI state; tour fixtures are clearly marked and never persisted.
 
 ## One number, one truth
 
@@ -327,40 +326,83 @@ Migrations are hand-written Alembic (0001–0006) with pre-validated constraint 
 
 ```text
 kestrel/
+├── start.sh · start.ps1 · start.bat   # one-command bootstrap (engine checks, models, .env token,
+│                                      #   migrations, ingestion-if-empty, readiness, browser)
+├── Makefile                           # the command contract: demo · ingest · reindex · benchmark · test · lint
+├── docker-compose.yml                 # db · api · agent-gateway · frontend (loopback-only exposure)
+├── compose.dev.yml                    # debug port overrides (db 5433, gateway 8010)
+├── .env.example                       # every variable documented; required vs optional marked
+├── alembic.ini                        # mounted into the api container; migrations run at boot
+├── pytest.ini · ruff.toml             # backend test and lint configuration
+│
+├── IMPLEMENTATION_SPEC.md             # the canonical build specification
+├── AGENTS.md                          # repo rules for coding agents (evidence discipline, anti-patterns)
+├── START_HERE.md                      # specification-first onboarding
+│
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/            # routers: sessions, artifacts, briefs, sources, providers, health, config
-│   │   ├── services/          # conversation orchestration, sessions, briefs, artifacts
-│   │   ├── agent_client/      # gateway client, prompts, validator, skill loader
-│   │   ├── retrieval/         # hybrid search, embedder, benchmark runner
-│   │   ├── ingestion/         # syncer, parser, chunker, indexer, CLI
-│   │   ├── security/          # nh3 sanitizer + CSP preview builder
-│   │   ├── models/ core/ db/  # entities, config, sessions
-│   │   └── main.py            # app, middleware, JSON logging, lifespan
-│   └── migrations/versions/   # 0001 … 0006
+│   │   ├── api/v1/                    # routers: sessions (+SSE), briefs, artifacts, sources,
+│   │   │                              #   providers, config, health
+│   │   ├── services/                  # conversation orchestration, sessions, briefs, artifacts
+│   │   ├── agent_client/              # gateway client, prompt builders, validator, skill loader,
+│   │   │                              #   json extractor
+│   │   ├── retrieval/                 # hybrid search (RRF fusion), embedder, benchmark runner
+│   │   ├── ingestion/                 # syncer, parser, chunker, indexer, CLI
+│   │   ├── security/                  # nh3 sanitizer + CSP preview builder
+│   │   ├── models/ core/ db/          # ORM entities, validated settings, async engine
+│   │   └── main.py                    # app wiring: middleware, JSON logging, lifespan
+│   ├── migrations/versions/           # 0001 … 0006 (hand-written, pre-validated constraints)
+│   ├── requirements.txt               # pinned runtime dependencies
+│   ├── requirements.lock              # reproducible lockfile
+│   └── Dockerfile
 │
 ├── agent-gateway/
-│   └── src/server.ts          # pi-ai provider routing, limits, internal auth
+│   ├── src/server.ts                  # pi-ai provider routing, catalog validation, per-request
+│   │                                  #   context/output limits, internal token auth
+│   ├── src/spike.ts                   # Phase-0 compatibility evidence (historical)
+│   └── Dockerfile                     # tsc build → node dist/server.js
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── components/        # manuscript, sidenotes, leaders, fold, plates, mermaid, composer…
-│   │   ├── lib/               # api client, citation engine, motion helpers
-│   │   └── styles/dossier.css
-│   └── nginx.conf             # SPA routing with Cache-Control: no-store on index.html
+│   │   ├── components/                # RunningHead · IndexRail · Frontmatter · Manuscript ·
+│   │   │                              #   SideNote · LeaderLines · ComposerBar · GrowthBriefModal ·
+│   │   │                              #   PlateAside · PlateViewerModal · ArtifactsDock ·
+│   │   │                              #   MermaidFrame · MarkdownViewer · Toasts
+│   │   ├── lib/                       # api client · citeInline (citation engine) · motion (WAAPI
+│   │   │                              #   helpers) · useFocusTrap · asciiArt · csp (shared preview policy)
+│   │   ├── styles/dossier.css         # the complete design system (tokens, components, motion)
+│   │   └── test/                      # vitest suites (102 tests)
+│   ├── public/fonts/                  # self-hosted display faces
+│   ├── nginx.conf                     # SPA routing; no-store on index.html
+│   └── Dockerfile                     # vite build → nginx-alpine
 │
-├── runtime-skills/            # product skills loaded at generation time
-│   ├── ship-30-for-30/SKILL.md
-│   └── document-craft/SKILL.md
+├── runtime-skills/                    # product skills loaded at generation time (versioned frontmatter)
+│   ├── ship-30-for-30/SKILL.md        # essay craft contract
+│   └── document-craft/SKILL.md        # deliverable style charter
 │
-├── tests/                     # unit · integration · evaluation
-├── docs/                      # PRD · architecture · design · manual test plan · ADRs · eval fixtures
-├── agent-transcripts/         # evidence logs of every implementation phase
-├── uiux-research/             # design research + prototypes
-├── docker-compose.yml         # db · api · agent-gateway · frontend
-├── compose.dev.yml            # debug port overrides
-└── Makefile                   # every documented command
+├── tests/                             # backend suites
+│   ├── unit/                          #   api · services (incl. Wave B/C regressions) · agent_client ·
+│   │                                  #   retrieval · ingestion · security (176 tests)
+│   ├── integration/                   #   opt-in live tests: Ollama, gateway, db/readiness, proxy
+│   └── evaluation/                    #   20-case retrieval benchmark
+│
+├── docs/
+│   ├── PRD.md                         # discovery brief, metrics, scope, risks, traceability
+│   ├── architecture.md                # schema, flows, contracts, security, resilience
+│   ├── design.md                      # design system as shipped
+│   ├── manual-test-plan.md            # MT-01 … MT-22 human verification
+│   ├── frontend-integration-spec.md   # API↔UI contract + amendments
+│   ├── ADRs/                          # architecture decision records (agent runtime + amendment)
+│   ├── evaluation/                    # retrieval_cases.yaml fixture
+│   ├── audits/                        # independent audit cycle + rebaseline verification (indexed)
+│   └── proposals/                     # deferred designs (multi-provider credential management)
+│
+├── agent-transcripts/                 # phase evidence logs: commands, exit codes, failures, corrections
+├── uiux-research/                     # founding design research + HTML prototypes
+└── .agents/                           # coding-agent rules and verification gates (IDE-side)
 ```
+
+Runtime artifacts, not committed: `transcripts-cache/` (mirrored upstream transcripts, created by `make ingest`) and `.env` (created by the startup scripts from `.env.example`).
 
 ---
 
@@ -379,7 +421,7 @@ kestrel/
 | Diagrams | Mermaid 11 (strict, sandboxed) |
 | Sanitization | nh3 (Rust/ammonia) |
 | Streaming | Server-Sent Events + heartbeat |
-| Testing | pytest + pytest-asyncio (176 tests) · Vitest (103 tests) |
+| Testing | pytest + pytest-asyncio (176 tests) · Vitest (102 tests) |
 | Quality | ruff · mypy · tsc |
 | Containerization | Docker Compose |
 
@@ -558,7 +600,7 @@ npm run build --prefix frontend
 
 # 4. Frontend unit & component test suite (Vitest)
 npm test --prefix frontend
-# Output: 103 passed across 11 test suites in 3.64s
+# Output: 102 passed across 11 test suites
 
 # 5. Full backend unit test suite (Pytest)
 python -m pytest tests/unit/ -m "not integration"
@@ -638,8 +680,10 @@ Honest boundaries of v1, by design:
 | `docs/architecture.md` | Schema, endpoints, component boundaries, flows, deployment topology |
 | `docs/design.md` | Design system: tokens, IA, interaction states, responsive + accessibility |
 | `IMPLEMENTATION_SPEC.md` | The canonical build specification this repo implements |
-| `docs/manual-test-plan.md` | UI test plan for humans |
-| `docs/ADRs/` | Architecture decision records (agent runtime choice) |
+| `docs/manual-test-plan.md` | UI test plan for humans (MT-01 … MT-22 with evidence to capture) |
+| `docs/ADRs/` | Architecture decision records (agent runtime choice, with amendment) |
+| `docs/audits/` | The independent audit cycle and its rebaseline verification, indexed with remediation mapping |
+| `docs/proposals/` | Deferred designs — multi-provider credential management |
 | `docs/evaluation/retrieval_cases.yaml` | The 20-case retrieval fixture |
 | `uiux-research/` | Design research ("Bone & Aubergine") + HTML prototypes |
 | `agent-transcripts/` | Phase-by-phase evidence logs, including failures and corrections |

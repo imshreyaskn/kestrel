@@ -44,3 +44,10 @@ We standardize on the **Pi Coding Agent SDK** hosted within a lightweight Node.j
 ### Mitigations for Dual-Runtime
 - The gateway remains thin: zero direct database access, zero filesystem tools, and no independent state. All persistent data lives in PostgreSQL managed by FastAPI.
 - Internal communication between FastAPI and the gateway uses typed JSON schemas and internal Docker networking.
+
+## Amendment (2026-10-12)
+
+Two corrections for accuracy, recorded rather than silently edited:
+
+1. **"Agent tool loop" — superseded.** The gateway does not run a tool loop. It performs single-shot structured generation via `@earendil-works/pi-ai` (`models.complete`). Retrieval is a deterministic FastAPI pipeline stage, per IMPLEMENTATION_SPEC §6.6, so that small local models succeed without multi-turn tool orchestration. No tools are registered in the gateway; the Phase-0 spike's mock `search_transcripts` tool is historical evidence, not runtime surface. The `pi-coding-agent` package was removed from the gateway's dependencies as unused.
+2. **Constrained decoding evaluated and rejected for the local path.** Forced tool-call output (`tool_choice` with a strict-schema `submit_response` tool) was probed on `qwen2.5:1.5b` (transcript 016, probe 5): Ollama ignores tool-choice enforcement on this model class and inference degrades. The hardened JSON extractor plus one typed repair remains the output-contract floor. Cloud-native structured outputs stay a roadmap option per provider.

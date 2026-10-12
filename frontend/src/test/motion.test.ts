@@ -3,7 +3,6 @@ import {
   prefersReducedMotion,
   stampPress,
   bloomEndmark,
-  applyStagger,
   settleEntry,
   flip,
   play,
@@ -125,34 +124,6 @@ describe('motion system', () => {
     it('handles gracefully when endmark element is absent', () => {
       (document.getElementById as any).mockReturnValue(null);
       expect(() => bloomEndmark()).not.toThrow();
-    });
-  });
-
-  describe('applyStagger', () => {
-    it('sets --i CSS custom property capped at 5', () => {
-      const items: any[] = [];
-      for (let i = 0; i < 8; i++) {
-        const styles = new Map<string, string>();
-        items.push({
-          style: {
-            setProperty: (k: string, v: string) => styles.set(k, v),
-          },
-          getProp: (k: string) => styles.get(k),
-        });
-      }
-
-      const container: any = {
-        querySelectorAll: vi.fn().mockReturnValue(items),
-      };
-
-      applyStagger(container, '.entry');
-
-      expect(items[0].getProp('--i')).toBe('0');
-      expect(items[3].getProp('--i')).toBe('3');
-      expect(items[5].getProp('--i')).toBe('5');
-      // items beyond 5 should be capped at 5 per spec §5.4
-      expect(items[6].getProp('--i')).toBe('5');
-      expect(items[7].getProp('--i')).toBe('5');
     });
   });
 

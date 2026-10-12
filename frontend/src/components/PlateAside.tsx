@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArtifactData } from '../types';
-import { CSP_HEADER } from '../lib/demoData';
+import { CSP_HEADER } from '../lib/csp';
 import { MarkdownViewer } from './MarkdownViewer';
 
 interface PlateAsideProps {

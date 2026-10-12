@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { ArtifactData } from '../types';
-import { CSP_HEADER } from '../lib/demoData';
+import { CSP_HEADER } from '../lib/csp';
 import { MarkdownViewer } from './MarkdownViewer';
 import { useFocusTrap } from '../lib/useFocusTrap';
 import { prefersReducedMotion, flip } from '../lib/motion';

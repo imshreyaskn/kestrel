@@ -274,3 +274,17 @@ Before declaring completion, verify each of the following:
 5. **Session Management:**
    - Rename session via Index Rail $\rightarrow$ persists across browser refresh.
    - Delete session $\rightarrow$ successfully removed from PostgreSQL.
+
+---
+
+## 6. Contract amendments (2026-10-12, repository state `223e0e4`)
+
+This specification was written during the frontend live-binding phase. The following deltas supersede the sections above wherever they conflict. `architecture.md` is the current authority.
+
+1. **SSE heartbeat.** The stream emits `: ping` comment lines every 15 seconds during silent phases (drafting). Clients must tolerate comment frames (the browser `EventSource` ignores them; hand-rolled parsers must not treat them as events).
+2. **Idempotency.** `POST /sessions/{id}/messages` accepts `Idempotency-Key` or `X-Idempotency-Key`. A completed replay returns the stored turn; an in-flight replay returns the SSE error code `REQUEST_IN_PROGRESS` (retryable).
+3. **History ordering.** `GET /sessions/{id}/messages` returns newest-page semantics backed by the monotonic `messages.seq` column; the response array remains chronological. Citation arrays are ordered by `retrieval_rank`, so bead numbering is stable across reloads.
+4. **Message contract additions.** `target_word_count` (200–3000, essay mode only) re-bands the length gate. Message metadata may carry `evidence_rrf_scores`, the skill stamp, and label-reconciliation counters. `conversation_context` entries now carry per-turn `provider` and `model_id`.
+5. **Gateway error surface.** A provider mid-completion error returns 502 `provider_error` with the unwrapped provider message; the backend maps gateway 4xx/5xx to the typed envelope codes listed in `architecture.md` §4.3, with truthful `retryable` flags (configuration errors are non-retryable).
+6. **Error code additions.** `PROVIDER_MISCONFIGURED`, `PAYLOAD_TOO_LARGE`, `AUTHENTICATION_FAILED`, `GENERATION_TRUNCATED`, `REQUEST_IN_PROGRESS`, and the stored `error_code` value `SERVER_RESTARTED` (startup sweep of stranded pending rows).
+7. **Production surface changes.** The states tray is removed (`7050b29`); the tour fixture data (`demoData.ts`) has been deleted — the shared CSP constant moved to `lib/csp.ts`; the Fold refuses to open without a real brief, and plate lookup has no fixture fallback. The Folio Dock (right deliverables shelf) is additive: hidden when the session holds no deliverables, collision-avoidant against the colophon popover.

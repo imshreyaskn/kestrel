@@ -15,7 +15,7 @@ import {
 import { ApiError, api, isUuid } from './lib/api';
 import { buildAnswerData, buildCitations, entriesFromHistory, modeToLabel } from './lib/citeInline';
 import { prefersReducedMotion, strikeCard, shakeConflict } from './lib/motion';
-import { TOUR_ARTIFACTS, TOUR_BRIEF } from './lib/demoData';
+
 import { RunningHead } from './components/RunningHead';
 import { IndexRail } from './components/IndexRail';
 import { Frontmatter } from './components/Frontmatter';
@@ -797,7 +797,7 @@ export const App: React.FC = () => {
   const handleExaminePlate = useCallback(
     (artId: string, originRect?: DOMRect) => {
       const all = sessions.flatMap((s) => s.artifacts);
-      const art = all.find((a) => a.id === artId) || TOUR_ARTIFACTS[artId];
+      const art = all.find((a) => a.id === artId);
       if (art) {
         if (originRect) setPlateOriginRect(originRect);
         setActiveArtifact(art);
@@ -915,24 +915,27 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* The Fold — Growth Brief Deliverable Modal */}
-      <GrowthBriefModal
-        isOpen={isBriefOpen}
-        onClose={() => setIsBriefOpen(false)}
-        brief={activeBrief || TOUR_BRIEF}
-        onSaveImpression={handleSaveBrief}
-        onSetEssay={() => {
-          setActiveMode('essay');
-          showToast('Composer set to Essay');
-        }}
-        onCastPlate={() => {
-          setActiveMode('artifact');
-          setComposerPrefill(
-            `Cast an HTML one-pager experiment brief from this growth brief: “${activeBrief?.title || 'the brief'}”.`
-          );
-          showToast('Composer set to Plate — describe the plate and bind');
-        }}
-      />
+      {/* The Fold — Growth Brief Deliverable Modal. Rendered only when a real
+          brief exists: the removed design-tour fixtures can never surface. */}
+      {activeBrief && (
+        <GrowthBriefModal
+          isOpen={isBriefOpen}
+          onClose={() => setIsBriefOpen(false)}
+          brief={activeBrief}
+          onSaveImpression={handleSaveBrief}
+          onSetEssay={() => {
+            setActiveMode('essay');
+            showToast('Composer set to Essay');
+          }}
+          onCastPlate={() => {
+            setActiveMode('artifact');
+            setComposerPrefill(
+              `Cast an HTML one-pager experiment brief from this growth brief: “${activeBrief.title}”.`
+            );
+            showToast('Composer set to Plate — describe the plate and bind');
+          }}
+        />
+      )}
 
       {/* Plate Viewer — Sandboxed Deliverable Modal */}
       <PlateViewerModal

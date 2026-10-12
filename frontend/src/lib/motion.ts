@@ -127,17 +127,6 @@ export function bloomEndmark(): void {
 }
 
 /**
- * §5.4 Stagger — sets CSS --i custom property for stagger delays,
- * capped at 6 items (240ms max) per the spec.
- */
-export function applyStagger(parent: HTMLElement, selector = '.entry'): void {
-  const items = parent.querySelectorAll<HTMLElement>(selector);
-  items.forEach((el, i) => {
-    el.style.setProperty('--i', String(Math.min(i, 5)));
-  });
-}
-
-/**
  * §5.6 Type settle — adds `.is-arrived` to entry elements so the Fraunces
  * SOFT axis relaxes (30→0), reading as ink pressing into paper.
  */

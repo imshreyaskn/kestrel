@@ -79,7 +79,7 @@ export interface GrowthBriefData {
   experiment: GrowthBriefExperiment;
   risks: string; // newline-joined list
   nextDeliverable: string;
-  isDemo?: boolean; // design-tour brief: never sent to the API
+  isDemo?: boolean; // fixture-data marker: never sent to the API
   createdAt?: string;
   updatedAt?: string;
 }
