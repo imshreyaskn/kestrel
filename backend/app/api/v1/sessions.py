@@ -5,11 +5,12 @@ Implements IMPLEMENTATION_SPEC.md §5.2, §6.2-§6.5.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import logging
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -27,6 +28,8 @@ from backend.app.services.session_service import default_session_service
 
 logger = logging.getLogger("kestrel.sessions_api")
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+SSE_HEARTBEAT_INTERVAL_SECONDS: float = 15.0
 
 
 def get_current_user_id() -> uuid.UUID:
@@ -363,24 +366,50 @@ async def submit_message(
                 detail="Message processing failed. Retry, or switch provider.",
             ) from exc
 
-    # Streaming SSE generator
+    # Streaming SSE generator with 15-second heartbeat ping (BA6)
     async def event_generator():
+        queue: asyncio.Queue[dict[str, Any] | Exception | None] = asyncio.Queue()
+
+        async def stream_producer():
+            try:
+                async for event in default_conversation_service.process_message_stream(
+                    db=db,
+                    session_id=session_id,
+                    user_id=user_id,
+                    content=payload.content,
+                    mode=payload.mode,
+                    provider=payload.provider,
+                    cloud_provider=payload.cloud_provider,
+                    model_id=payload.model_id,
+                    product_context=payload.product_context,
+                    target_word_count=payload.target_word_count,
+                    request_id=request.state.request_id,
+                ):
+                    await queue.put(event)
+            except Exception as exc:  # noqa: BLE001
+                await queue.put(exc)
+            finally:
+                await queue.put(None)
+
+        producer_task = asyncio.create_task(stream_producer())
+
         try:
-            async for event in default_conversation_service.process_message_stream(
-                db=db,
-                session_id=session_id,
-                user_id=user_id,
-                content=payload.content,
-                mode=payload.mode,
-                provider=payload.provider,
-                cloud_provider=payload.cloud_provider,
-                model_id=payload.model_id,
-                product_context=payload.product_context,
-                target_word_count=payload.target_word_count,
-                request_id=request.state.request_id,
-            ):
-                event_type = event.get("event", "message")
-                event_data = json.dumps(event.get("data", {}))
+            while True:
+                try:
+                    item = await asyncio.wait_for(
+                        queue.get(), timeout=SSE_HEARTBEAT_INTERVAL_SECONDS
+                    )
+                except TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    raise item
+
+                event_type = item.get("event", "message")
+                event_data = json.dumps(item.get("data", {}))
                 yield f"event: {event_type}\ndata: {event_data}\n\n"
         except Exception:  # noqa: BLE001
             # Unexpected router-level failure: log full detail server-side,
@@ -401,6 +430,13 @@ async def submit_message(
                 }
             )
             yield f"event: error\ndata: {err_json}\n\n"
+        finally:
+            if not producer_task.done():
+                producer_task.cancel()
+                try:
+                    await producer_task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
 
     return StreamingResponse(
         event_generator(),

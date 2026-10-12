@@ -307,6 +307,51 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                       onExamine={(rect) => onExaminePlate(entry.artifact!.id, rect)}
                     />
                   )}
+
+                  {/* Growth Brief deliverable aside in margin */}
+                  {entry.brief && (
+                    <aside className="plate brief-plate" aria-label="Growth brief deliverable">
+                      <div
+                        className="plate-in"
+                        onClick={onOpenBrief}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onOpenBrief();
+                          }
+                        }}
+                      >
+                        <div className="plate-badge">Growth Brief</div>
+                        <h4 className="plate-title">{entry.brief.title}</h4>
+                        <p className="plate-desc">
+                          {entry.brief.problem
+                            ? entry.brief.problem.length > 95
+                              ? entry.brief.problem.slice(0, 95) + '…'
+                              : entry.brief.problem
+                            : 'Structured executive growth brief.'}
+                        </p>
+                        <div className="plate-cap">
+                          <span className="stamp">
+                            v{entry.brief.version} · {entry.brief.status}
+                          </span>
+                        </div>
+                        <div className="plate-open">
+                          <button
+                            type="button"
+                            className="tbtn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenBrief();
+                            }}
+                          >
+                            Examine Brief →
+                          </button>
+                        </div>
+                      </div>
+                    </aside>
+                  )}
                 </div>
 
                 <footer className="a-foot">
@@ -316,13 +361,24 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                       Path: {ans.writingPath.charAt(0).toUpperCase() + ans.writingPath.slice(1)}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    className="tbtn"
-                    onClick={onOpenBrief}
-                  >
-                    Bind to a growth brief →
-                  </button>
+                  {entry.brief ? (
+                    <button
+                      type="button"
+                      className="tbtn"
+                      style={{ color: 'var(--accent)', fontWeight: 600 }}
+                      onClick={onOpenBrief}
+                    >
+                      Examine growth brief →
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="tbtn"
+                      onClick={onOpenBrief}
+                    >
+                      Bind to a growth brief →
+                    </button>
+                  )}
                   {!ans.writingPath && (
                     <button
                       type="button"

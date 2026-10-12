@@ -16,14 +16,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.api.v1.sessions import get_current_user_id
 from backend.app.db.session import get_db
 from backend.app.services.growth_brief_service import default_growth_brief_service
+from backend.app.services.session_service import default_session_service
 
 router = APIRouter(prefix="/growth-briefs", tags=["growth-briefs"])
+
+
+class GrowthBriefExperimentData(BaseModel):
+    model_config = {"extra": "allow"}
+
+    hypothesis: str | None = None
+    change: str | None = None
+    segment: str | None = None
+    success_metric: str | None = None
+    guardrail_metric: str | None = None
+    decision_rule: str | None = None
+
+
+class GrowthBriefData(BaseModel):
+    model_config = {"extra": "allow"}
+
+    problem: str | None = None
+    research_summary: str | None = None
+    recommendation: str | None = None
+    assumptions: list[str] | None = None
+    experiment: GrowthBriefExperimentData | dict[str, Any] | None = None
+    risks: list[str] | None = None
+    next_deliverable: str | None = None
 
 
 class UpdateGrowthBriefRequest(BaseModel):
     title: str | None = None
     status: Literal["draft", "ready", "archived"] | None = None
-    data: dict[str, Any] | None = None
+    data: GrowthBriefData | None = None
     # Spec §5.7/§5.8: edits must use optimistic version checks; a PATCH
     # without the expected version would silently overwrite concurrent edits.
     expected_version: int = Field(..., gt=0)
@@ -39,6 +63,35 @@ class GrowthBriefResponse(BaseModel):
     data: dict[str, Any]
     created_at: datetime.datetime
     updated_at: datetime.datetime
+
+
+@router.get("/session/{session_id}", response_model=GrowthBriefResponse | None)
+async def get_latest_growth_brief_for_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Retrieve the latest growth brief for a session, enforcing ownership."""
+    session = await default_session_service.get_session(db, session_id, user_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found",
+        )
+    brief = await default_growth_brief_service.get_latest_for_session(db, session_id)
+    if not brief:
+        return None
+    return GrowthBriefResponse(
+        id=brief.id,
+        session_id=brief.session_id,
+        title=brief.title,
+        version=brief.version,
+        status=brief.status,
+        product_context=brief.product_context,
+        data=brief.data,
+        created_at=brief.created_at,
+        updated_at=brief.updated_at,
+    )
 
 
 @router.get("/{brief_id}", response_model=GrowthBriefResponse)
@@ -78,12 +131,17 @@ async def update_growth_brief(
 ):
     """Update growth brief with ownership and optimistic version checking."""
     try:
+        data_update = (
+            payload.data.model_dump(exclude_unset=True)
+            if payload.data is not None
+            else None
+        )
         updated = await default_growth_brief_service.update_growth_brief(
             db=db,
             brief_id=brief_id,
             user_id=user_id,
             title=payload.title,
-            data_update=payload.data,
+            data_update=data_update,
             status=payload.status,
             expected_version=payload.expected_version,
         )

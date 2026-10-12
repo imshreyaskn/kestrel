@@ -730,6 +730,7 @@ class ConversationService:
                         next_deliverable=validated.next_deliverable,
                         product_context=product_context,
                         source_message_id=assistant_message.id,
+                        commit=False,
                     )
                     growth_brief_id = brief.id
 
@@ -755,6 +756,7 @@ class ConversationService:
                     content=validated.content,
                     source_message_id=assistant_message.id,
                     growth_brief_id=linked_brief_id,
+                    commit=False,
                 )
                 artifact_id = artifact.id
 
@@ -784,6 +786,10 @@ class ConversationService:
                 )
                 meta_payload["skill"] = skill_ver
                 meta_payload["writing_path"] = validated.writing_path
+            if growth_brief_id:
+                meta_payload["growth_brief_id"] = str(growth_brief_id)
+            if artifact_id:
+                meta_payload["artifact_id"] = str(artifact_id)
 
             assistant_message.metadata_ = meta_payload
 

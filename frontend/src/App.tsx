@@ -250,13 +250,27 @@ export const App: React.FC = () => {
       // Real sessions: fetch persisted history on first open.
       if (!target.isDemo && target.entries.length === 0) {
         try {
-          const msgs = await api.getSessionMessages(sessionId);
-          const loaded = entriesFromHistory(sessionId, msgs);
-          if (loaded.length > 0) {
-            setSessions((prev) =>
-              prev.map((s) => (s.id === sessionId ? { ...s, entries: loaded } : s))
-            );
-          }
+          const [msgs, latestBrief, arts] = await Promise.all([
+            api.getSessionMessages(sessionId),
+            api.getLatestGrowthBrief(sessionId),
+            api.getSessionArtifacts(sessionId),
+          ]);
+          const loaded = entriesFromHistory(sessionId, msgs, latestBrief, arts);
+          if (latestBrief) setActiveBrief(latestBrief);
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    entries: loaded,
+                    activeBrief: latestBrief || s.activeBrief,
+                    artifacts: arts.length > 0 ? arts : s.artifacts,
+                    briefCount: latestBrief ? 1 : s.briefCount,
+                    plateSeq: arts.length > 0 ? arts.length : s.plateSeq,
+                  }
+                : s
+            )
+          );
         } catch (err) {
           const msg = err instanceof ApiError ? err.message : 'history could not be read';
           showToast(`Could not read this dossier — ${msg}`, 'danger');
@@ -496,9 +510,11 @@ export const App: React.FC = () => {
               }
 
               // Growth brief deliverable: fetch and open the fold.
+              let fetchedBrief: GrowthBriefData | undefined = undefined;
               if (data.growth_brief_id) {
                 try {
                   const brief = await api.getGrowthBrief(data.growth_brief_id);
+                  fetchedBrief = brief;
                   setSessions((prev) =>
                     prev.map((s) =>
                       s.id === session.id
@@ -514,6 +530,31 @@ export const App: React.FC = () => {
                   const msg = err instanceof ApiError ? err.message : 'the brief could not be read';
                   showToast(`Brief was persisted but could not be opened — ${msg}`, 'danger');
                 }
+              }
+
+              // Deliverable artifacts: Essay or Plate
+              const isEssay = data.message.mode === 'essay' || activeMode === 'essay';
+              const essayArtifact: ArtifactData | undefined = isEssay
+                ? {
+                    id: `essay-${data.message.id || Date.now()}`,
+                    file: `${(data.message.content.match(/^#+\s*(.+)$/m)?.[1] || 'ship-30-essay').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`,
+                    title: data.message.content.match(/^#+\s*(.+)$/m)?.[1] || 'Ship 30 Digital Essay',
+                    kind: 'markdown',
+                    src: data.message.content,
+                    version: 1,
+                    impression: 'Ship 30 Essay · Markdown',
+                    createdAt: data.message.created_at || new Date().toISOString(),
+                  }
+                : undefined;
+
+              if (essayArtifact) {
+                setSessions((prev) =>
+                  prev.map((s) =>
+                    s.id === session.id
+                      ? { ...s, artifacts: [...s.artifacts, essayArtifact] }
+                      : s
+                  )
+                );
               }
 
               // Research / brief / essay answer entry.
@@ -534,6 +575,9 @@ export const App: React.FC = () => {
                   writingPath,
                 },
                 citations,
+                brief: fetchedBrief,
+                artifact: essayArtifact,
+                essayContent: isEssay ? data.message.content : undefined,
                 createdAt: data.message.created_at || new Date().toISOString(),
               });
 
@@ -855,6 +899,10 @@ export const App: React.FC = () => {
         providers={providers}
         onOpenMobileMenu={() => setIsMobileRailOpen(true)}
         isComposing={isComposing}
+        activeBrief={activeSession?.activeBrief || activeBrief}
+        onOpenBrief={handleOpenBrief}
+        artifacts={activeSession?.artifacts || []}
+        onExaminePlate={handleExaminePlate}
       />
 
       {/* Book-spine Session Index Rail */}

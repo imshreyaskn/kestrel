@@ -161,3 +161,54 @@ def test_update_artifact_requires_expected_version():
         json={"content": "Sneaky overwrite"},
     )
     assert response.status_code == 422
+
+
+def test_update_growth_brief_typed_data_valid():
+    """BA10: Valid structured data payload is accepted."""
+    brief_id = uuid.uuid4()
+    fake_brief = GrowthBrief(
+        id=brief_id,
+        session_id=uuid.uuid4(),
+        title="Updated Brief",
+        version=2,
+        status="draft",
+        data={"problem": "Refined problem statement", "assumptions": ["A1", "A2"]},
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
+    )
+    with patch(
+        "backend.app.api.v1.growth_briefs.default_growth_brief_service.update_growth_brief",
+        new=AsyncMock(return_value=fake_brief),
+    ):
+        response = client.patch(
+            f"/api/v1/growth-briefs/{brief_id}",
+            json={
+                "title": "Updated Brief",
+                "expected_version": 1,
+                "data": {
+                    "problem": "Refined problem statement",
+                    "assumptions": ["A1", "A2"],
+                    "experiment": {
+                        "hypothesis": "Test hypothesis",
+                        "success_metric": "Conversion +5%",
+                    },
+                },
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["title"] == "Updated Brief"
+
+
+def test_update_growth_brief_typed_data_invalid_type_rejected():
+    """BA10: Invalid types in data payload (e.g. assumptions as string rather than list) are rejected with 422."""
+    brief_id = uuid.uuid4()
+    response = client.patch(
+        f"/api/v1/growth-briefs/{brief_id}",
+        json={
+            "expected_version": 1,
+            "data": {
+                "assumptions": "this should be a list, not a string",
+            },
+        },
+    )
+    assert response.status_code == 422

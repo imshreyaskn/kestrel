@@ -4,6 +4,7 @@ Tests file discovery, source key canonicalization, and indexer lifecycle.
 """
 
 import hashlib
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -176,3 +177,61 @@ def test_sync_archive_tar_enforces_pep706(tmp_path: Path, monkeypatch):
         sync_transcripts_repo(
             tmp_path / "target", repo_url=None, archive_url="http://fake.tar.gz"
         )
+
+
+@pytest.mark.asyncio
+async def test_indexer_updates_existing_source_by_soft_deactivating_chunks(tmp_path: Path):
+    """When a source content changes, old chunks are soft-deactivated (is_active=False) instead of deleted."""
+    ep_dir = tmp_path / "episodes" / "changed-ep"
+    ep_dir.mkdir(parents=True)
+    transcript_file = ep_dir / "transcript.md"
+    content = "---\nguest: Bob\ntitle: Bob on Growth\n---\n\nBob (00:00:00):\nNew content.\n"
+    transcript_file.write_text(content, encoding="utf-8")
+
+    source_id = uuid.uuid4()
+    existing_source = TranscriptSource(
+        id=source_id,
+        source_key="episodes/changed-ep/transcript.md",
+        title="Bob on Growth",
+        guest="Bob",
+        content_hash="old-hash-123",
+        is_active=True,
+    )
+
+    mock_session = AsyncMock()
+    mock_session.add_all = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = existing_source
+    mock_result.rowcount = 0
+    mock_session.execute.return_value = mock_result
+
+    nested_cm = MagicMock()
+    nested_cm.__aenter__ = AsyncMock(return_value=None)
+    nested_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_session.begin_nested = MagicMock(return_value=nested_cm)
+
+    class MockContextManager:
+        async def __aenter__(self):
+            return mock_session
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    mock_factory = MagicMock(return_value=MockContextManager())
+
+    embedder = DeterministicFakeEmbeddingProvider()
+    indexer = TranscriptIndexer(embedder=embedder, session_factory=mock_factory)
+
+    stats = await indexer.index_directory(tmp_path)
+
+    assert stats.updated == 1
+    # Verify execute was called with an update statement for TranscriptChunk setting is_active=False
+    calls = mock_session.execute.call_args_list
+    assert len(calls) >= 2
+    update_call = calls[1]
+    stmt = update_call.args[0]
+    # Check that it is an Update statement and NOT a Delete statement
+    from sqlalchemy.sql.dml import Update
+    assert isinstance(stmt, Update)
+    assert stmt.table.name == "transcript_chunks"
+

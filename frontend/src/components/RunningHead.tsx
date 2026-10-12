@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ProviderConfig, ProviderId } from '../types';
+import { ArtifactData, GrowthBriefData, ProviderConfig, ProviderId } from '../types';
 
 interface RunningHeadProps {
   title: string;
@@ -10,6 +10,10 @@ interface RunningHeadProps {
   providers: ProviderConfig[];
   onOpenMobileMenu: () => void;
   isComposing?: boolean;
+  activeBrief?: GrowthBriefData | null;
+  onOpenBrief?: () => void;
+  artifacts?: ArtifactData[];
+  onExaminePlate?: (id: string) => void;
 }
 
 export const RunningHead: React.FC<RunningHeadProps> = ({
@@ -21,6 +25,10 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
   providers,
   onOpenMobileMenu,
   isComposing = false,
+  activeBrief,
+  onOpenBrief,
+  artifacts,
+  onExaminePlate,
 }) => {
   const MAX_TITLE_LENGTH = 60;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -197,7 +205,33 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
         )}
       </div>
 
-      <div style={{ position: 'relative' }} ref={colophonRef}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {activeBrief && onOpenBrief && (
+          <button
+            type="button"
+            className="rh-deliverable-pill"
+            onClick={onOpenBrief}
+            title={`Examine growth brief: ${activeBrief.title}`}
+          >
+            <span className="rh-del-tag">Brief</span>
+            <span className="rh-del-t">{activeBrief.title}</span>
+            <span className="rh-del-arr" aria-hidden="true">→</span>
+          </button>
+        )}
+        {artifacts && artifacts.length > 0 && onExaminePlate && (
+          <button
+            type="button"
+            className="rh-deliverable-pill"
+            onClick={() => onExaminePlate(artifacts[artifacts.length - 1].id)}
+            title={`Examine latest plate: ${artifacts[artifacts.length - 1].title}`}
+          >
+            <span className="rh-del-tag">Plate</span>
+            <span className="rh-del-t">{artifacts[artifacts.length - 1].title}</span>
+            <span className="rh-del-arr" aria-hidden="true">→</span>
+          </button>
+        )}
+
+        <div style={{ position: 'relative' }} ref={colophonRef}>
         <button
           className={`colobtn${isComposing ? ' is-composing' : ''}`}
           id="coloBtn"
@@ -281,6 +315,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
           </p>
         </div>
       </div>
-    </header>
+    </div>
+  </header>
   );
 };

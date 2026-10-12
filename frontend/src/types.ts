@@ -125,6 +125,8 @@ export interface ManuscriptEntry {
   };
   citations?: Citation[];
   artifact?: ArtifactData;
+  brief?: GrowthBriefData;
+  essayContent?: string;
   createdAt: string;
 }
 

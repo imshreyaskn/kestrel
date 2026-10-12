@@ -633,6 +633,34 @@ export const api = {
   },
 
   /**
+   * Fetch the latest growth brief for a session (returns null if none exists).
+   */
+  async getLatestGrowthBrief(sessionId: string): Promise<GrowthBriefData | null> {
+    try {
+      const data = await request<GrowthBriefRecord | null>(
+        `/api/v1/growth-briefs/session/${sessionId}`
+      );
+      return data ? briefRecordToData(data) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Fetch all artifacts associated with a session.
+   */
+  async getSessionArtifacts(sessionId: string): Promise<ArtifactData[]> {
+    try {
+      const data = await request<ArtifactRecord[]>(
+        `/api/v1/artifacts/session/${sessionId}`
+      );
+      return (data || []).map(artifactRecordToData);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
    * Fetch an artifact by ID (ownership enforced server-side).
    */
   async getArtifact(artifactId: string): Promise<ArtifactData> {

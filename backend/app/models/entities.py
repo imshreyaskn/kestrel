@@ -10,15 +10,16 @@ import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector  # type: ignore[import-not-found,import-untyped]
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     PrimaryKeyConstraint,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -96,6 +97,13 @@ class ChatSession(Base):
         "metadata", JSONB, nullable=False, default=dict
     )
 
+    __table_args__ = (
+        CheckConstraint(
+            "provider_preference IN ('local', 'cloud')",
+            name="chk_chat_sessions_provider_preference",
+        ),
+    )
+
     user: Mapped["User"] = relationship("User", back_populates="sessions")
     messages: Mapped[list["Message"]] = relationship(
         "Message", back_populates="session", cascade="all, delete-orphan"
@@ -145,6 +153,21 @@ class Message(Base):
     )
     completed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('user', 'assistant')",
+            name="chk_messages_role",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'complete', 'failed', 'cancelled')",
+            name="chk_messages_status",
+        ),
+        CheckConstraint(
+            "provider IS NULL OR provider IN ('local', 'cloud')",
+            name="chk_messages_provider",
+        ),
     )
 
     session: Mapped["ChatSession"] = relationship(
@@ -228,10 +251,20 @@ class TranscriptChunk(Base):
         nullable=False,
         default=lambda: datetime.datetime.now(datetime.UTC),
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     __table_args__ = (
-        UniqueConstraint(
-            "source_id", "chunk_index", name="uq_transcript_chunks_source_chunk"
+        Index(
+            "uq_transcript_chunks_source_chunk_active",
+            "source_id",
+            "chunk_index",
+            unique=True,
+            postgresql_where=sa.text("is_active = TRUE"),
+        ),
+        Index(
+            "ix_transcript_chunks_active",
+            "source_id",
+            postgresql_where=sa.text("is_active = TRUE"),
         ),
     )
 
@@ -304,6 +337,14 @@ class GrowthBrief(Base):
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
 
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'ready', 'archived')",
+            name="chk_growth_briefs_status",
+        ),
+    )
+    __mapper_args__ = {"version_id_col": version, "version_id_generator": False}
+
     session: Mapped["ChatSession"] = relationship(
         "ChatSession", back_populates="growth_briefs"
     )
@@ -347,6 +388,14 @@ class Artifact(Base):
         default=lambda: datetime.datetime.now(datetime.UTC),
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
+
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('markdown', 'html')",
+            name="chk_artifacts_kind",
+        ),
+    )
+    __mapper_args__ = {"version_id_col": version, "version_id_generator": False}
 
     session: Mapped["ChatSession"] = relationship(
         "ChatSession", back_populates="artifacts"

@@ -98,9 +98,27 @@ async def lifespan(app: FastAPI):
             extra={"extra_fields": {"error": str(exc)}},
         )
 
+    # 3. Startup reconciliation: sweep stale pending messages from previous crashes (BA3)
+    try:
+        from backend.app.db.session import async_session_factory
+        from backend.app.services.session_service import default_session_service
+
+        async with async_session_factory() as db:
+            reconciled = await default_session_service.reconcile_stale_pending_messages(db)
+            if reconciled > 0:
+                logger.info(
+                    "Reconciled stale pending messages on startup",
+                    extra={"extra_fields": {"reconciled_count": reconciled}},
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Could not reconcile stale pending messages on startup",
+            extra={"extra_fields": {"error": str(exc)}},
+        )
+
     yield
 
-    # 3. Shutdown: clean up pooled HTTP client
+    # 4. Shutdown: clean up pooled HTTP client
     default_agent_gateway_client.set_http_client(None)
     await gateway_http.aclose()
 

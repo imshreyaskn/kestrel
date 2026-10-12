@@ -10,7 +10,7 @@
  * - splits model answers into a lead paragraph + roman-numeral sections.
  */
 
-import { Citation, ManuscriptEntry } from '../types';
+import { ArtifactData, Citation, GrowthBriefData, ManuscriptEntry } from '../types';
 import { CitationRecord, MessageRecord } from './api';
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
@@ -225,7 +225,12 @@ export function buildAnswerData(content: string, stamp: string): AnswerData {
 // ---------------------------------------------------------------------------
 // Message history -> manuscript entries
 // ---------------------------------------------------------------------------
-export function entriesFromHistory(sessionId: string, messages: MessageRecord[]): ManuscriptEntry[] {
+export function entriesFromHistory(
+  sessionId: string,
+  messages: MessageRecord[],
+  growthBrief?: GrowthBriefData | null,
+  artifacts?: ArtifactData[]
+): ManuscriptEntry[] {
   const entries: ManuscriptEntry[] = [];
 
   for (const m of messages) {
@@ -276,11 +281,37 @@ export function entriesFromHistory(sessionId: string, messages: MessageRecord[])
     } — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified`;
     const ansData = buildAnswerData(m.content, stamp);
     const writingPath = m.metadata?.writing_path ? String(m.metadata.writing_path) : undefined;
+
+    // Resolve associated deliverable (brief, artifact, or essay)
+    const matchedArtifact =
+      artifacts?.find((a) => a.id === m.metadata?.artifact_id) ||
+      (m.workflow_mode === 'essay'
+        ? {
+            id: `essay-${m.id}`,
+            file: `${(m.content.match(/^#+\s*(.+)$/m)?.[1] || 'digital-essay').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`,
+            title: m.content.match(/^#+\s*(.+)$/m)?.[1] || 'Ship 30 Digital Essay',
+            kind: 'markdown' as const,
+            src: m.content,
+            version: 1,
+            impression: 'Ship 30 Essay · Markdown',
+            createdAt: m.created_at,
+          }
+        : undefined);
+
+    const isBrief =
+      m.workflow_mode === 'growth_brief' ||
+      m.metadata?.growth_brief_id ||
+      (growthBrief && m.content.includes('Structured Growth Brief'));
+    const matchedBrief = isBrief ? (growthBrief ?? undefined) : undefined;
+
     entries.push({
       id: m.id,
       kind: 'answer',
       answerData: { ...ansData, writingPath },
       citations,
+      artifact: matchedArtifact,
+      brief: matchedBrief,
+      essayContent: m.workflow_mode === 'essay' ? m.content : undefined,
       createdAt: m.created_at,
     });
   }

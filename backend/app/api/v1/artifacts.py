@@ -10,11 +10,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.v1.sessions import get_current_user_id
 from backend.app.db.session import get_db
+from backend.app.models.entities import Artifact
 from backend.app.services.artifact_service import default_artifact_service
+from backend.app.services.session_service import default_session_service
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
@@ -36,6 +39,42 @@ class ArtifactResponse(BaseModel):
     version: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
+
+
+@router.get("/session/{session_id}", response_model=list[ArtifactResponse])
+async def get_artifacts_for_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+):
+    """Retrieve all artifacts for a session, enforcing ownership."""
+    session = await default_session_service.get_session(db, session_id, user_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found",
+        )
+    stmt = (
+        select(Artifact)
+        .where(Artifact.session_id == session_id)
+        .order_by(Artifact.created_at.asc())
+    )
+    res = await db.execute(stmt)
+    artifacts = res.scalars().all()
+    return [
+        ArtifactResponse(
+            id=a.id,
+            session_id=a.session_id,
+            kind=a.kind,
+            title=a.title,
+            content=a.content,
+            preview_content=a.preview_content,
+            version=a.version,
+            created_at=a.created_at,
+            updated_at=a.updated_at,
+        )
+        for a in artifacts
+    ]
 
 
 @router.get("/{artifact_id}", response_model=ArtifactResponse)

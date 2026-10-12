@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from backend.app.models.entities import ChatSession, GrowthBrief
 
@@ -30,6 +31,7 @@ class GrowthBriefService:
         next_deliverable: str,
         product_context: str | None = None,
         source_message_id: uuid.UUID | None = None,
+        commit: bool = True,
     ) -> GrowthBrief:
         """Create and persist a structured growth brief."""
         now = datetime.datetime.now(datetime.UTC)
@@ -55,8 +57,11 @@ class GrowthBriefService:
             updated_at=now,
         )
         db.add(brief)
-        await db.commit()
-        await db.refresh(brief)
+        if commit:
+            await db.commit()
+            await db.refresh(brief)
+        else:
+            await db.flush()
         return brief
 
     @staticmethod
@@ -130,8 +135,14 @@ class GrowthBriefService:
         brief.version += 1
         brief.updated_at = datetime.datetime.now(datetime.UTC)
 
-        await db.commit()
-        await db.refresh(brief)
+        try:
+            await db.commit()
+            await db.refresh(brief)
+        except StaleDataError as exc:
+            await db.rollback()
+            raise ValueError(
+                f"Version conflict on growth brief {brief_id}"
+            ) from exc
         return brief
 
 

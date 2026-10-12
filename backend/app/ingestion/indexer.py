@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.session import async_session_factory
@@ -195,11 +195,11 @@ class TranscriptIndexer:
                 existing_source.updated_at = now
                 source_id = existing_source.id
 
-                # Delete old chunks
+                # Soft-deactivate old chunks to preserve historical citations in message_sources (BA1)
                 await session.execute(
-                    delete(TranscriptChunk).where(
-                        TranscriptChunk.source_id == source_id
-                    )
+                    update(TranscriptChunk)
+                    .where(TranscriptChunk.source_id == source_id)
+                    .values(is_active=False)
                 )
                 stats.updated += 1
             else:
@@ -238,6 +238,7 @@ class TranscriptIndexer:
                     char_start=c.char_start,
                     char_end=c.char_end,
                     created_at=now,
+                    is_active=True,
                 )
                 for i, c in enumerate(chunks)
             ]

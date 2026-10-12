@@ -346,6 +346,69 @@ describe('entriesFromHistory', () => {
     expect(entries[0].kind).toBe('answer');
     expect(entries[0].answerData?.writingPath).toBe('analytical');
   });
+
+  it('links session growth brief to brief deliverable entry', () => {
+    const messages: MessageRecord[] = [
+      {
+        id: 'm1',
+        session_id: 's1',
+        role: 'assistant',
+        content: '## Scaling Strategy\nStructured Growth Brief persisted to workbench',
+        status: 'complete',
+        workflow_mode: 'growth_brief',
+        created_at: '2026-10-10T12:00:00Z',
+      },
+    ];
+    const testBrief = {
+      id: 'b1',
+      sessionId: 's1',
+      title: 'Scaling Strategy',
+      version: 1,
+      status: 'draft',
+      problem: 'Leaky bucket problem',
+      researchSummary: 'Summary text',
+      recommendation: 'Fix retention',
+      assumptions: 'Assumption 1',
+      experiment: {
+        hypothesis: 'H1',
+        change: 'C1',
+        segment: 'S1',
+        success_metric: 'M1',
+        guardrail_metric: 'G1',
+        decision_rule: 'D1',
+      },
+      risks: 'R1',
+      nextDeliverable: 'Plate',
+      productContext: null,
+      createdAt: '2026-10-10T12:00:00Z',
+      updatedAt: '2026-10-10T12:00:00Z',
+    };
+
+    const entries = entriesFromHistory('s1', messages, testBrief);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].brief).toBeDefined();
+    expect(entries[0].brief?.title).toBe('Scaling Strategy');
+  });
+
+  it('creates an essay deliverable artifact for essay workflow mode', () => {
+    const messages: MessageRecord[] = [
+      {
+        id: 'm1',
+        session_id: 's1',
+        role: 'assistant',
+        content: '# The Power of Onboarding\n\nFull essay text here...',
+        status: 'complete',
+        workflow_mode: 'essay',
+        created_at: '2026-10-10T12:00:00Z',
+      },
+    ];
+
+    const entries = entriesFromHistory('s1', messages);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].artifact).toBeDefined();
+    expect(entries[0].artifact?.title).toBe('The Power of Onboarding');
+    expect(entries[0].artifact?.kind).toBe('markdown');
+  });
 });
 
 describe('modeToLabel', () => {

@@ -330,6 +330,7 @@ class HybridRetrievalService:
             FROM transcript_chunks tc
             JOIN transcript_sources ts ON tc.source_id = ts.id
             WHERE ts.is_active = TRUE
+              AND tc.is_active = TRUE
               AND (1 - (tc.embedding <=> CAST(:query_vector AS vector))) >= :min_dense_score
             ORDER BY tc.embedding <=> CAST(:query_vector AS vector) ASC
             LIMIT :limit
@@ -390,6 +391,7 @@ class HybridRetrievalService:
             FROM transcript_chunks tc
             JOIN transcript_sources ts ON tc.source_id = ts.id
             WHERE ts.is_active = TRUE
+              AND tc.is_active = TRUE
               AND tc.search_vector @@ websearch_to_tsquery('english', :query)
             ORDER BY score DESC
             LIMIT :limit

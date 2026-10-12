@@ -11,6 +11,7 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.exc import StaleDataError
 
 from backend.app.models.entities import Artifact, ChatSession
 from backend.app.security.sanitizer import build_sandboxed_preview_html
@@ -26,6 +27,7 @@ class ArtifactService:
         content: str,
         source_message_id: uuid.UUID | None = None,
         growth_brief_id: uuid.UUID | None = None,
+        commit: bool = True,
     ) -> Artifact:
         """
         Create artifact with automatic server-side preview derivation.
@@ -51,8 +53,11 @@ class ArtifactService:
             updated_at=now,
         )
         db.add(artifact)
-        await db.commit()
-        await db.refresh(artifact)
+        if commit:
+            await db.commit()
+            await db.refresh(artifact)
+        else:
+            await db.flush()
         return artifact
 
     @staticmethod
@@ -113,8 +118,14 @@ class ArtifactService:
         artifact.version += 1
         artifact.updated_at = datetime.datetime.now(datetime.UTC)
 
-        await db.commit()
-        await db.refresh(artifact)
+        try:
+            await db.commit()
+            await db.refresh(artifact)
+        except StaleDataError as exc:
+            await db.rollback()
+            raise ValueError(
+                f"Version conflict on artifact {artifact_id}"
+            ) from exc
         return artifact
 
 

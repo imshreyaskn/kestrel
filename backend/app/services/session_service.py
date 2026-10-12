@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import delete, desc, select
+from sqlalchemy import delete, desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -187,6 +187,28 @@ class SessionService:
             )
 
         return message_list
+
+    @staticmethod
+    async def reconcile_stale_pending_messages(db: AsyncSession) -> int:
+        """
+        On server startup, reconcile any messages stuck in 'pending' status due
+        to an abrupt shutdown or crash, and mark them as 'failed' with error_code
+        'SERVER_RESTARTED' (BA3 / spec §5.3).
+        Returns the number of reconciled messages.
+        """
+        now = datetime.datetime.now(datetime.UTC)
+        stmt = (
+            update(Message)
+            .where(Message.status == "pending")
+            .values(
+                status="failed",
+                error_code="SERVER_RESTARTED",
+                completed_at=now,
+            )
+        )
+        result = await db.execute(stmt)
+        await db.commit()
+        return int(result.rowcount or 0)
 
 
 default_session_service = SessionService()
