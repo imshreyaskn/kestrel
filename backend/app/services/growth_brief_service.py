@@ -140,9 +140,7 @@ class GrowthBriefService:
             await db.refresh(brief)
         except StaleDataError as exc:
             await db.rollback()
-            raise ValueError(
-                f"Version conflict on growth brief {brief_id}"
-            ) from exc
+            raise ValueError(f"Version conflict on growth brief {brief_id}") from exc
         return brief
 
 

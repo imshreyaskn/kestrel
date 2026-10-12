@@ -187,8 +187,11 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
 
   try {
     const userPromptReminder =
-      "Reminder: apply the EPISTEMIC RULES. Archive facts → cite [E#]. Your own analysis → label it. " +
-      "Conversational turns → warm, brief, citations []. Out of scope → politely decline with scope: 'out_of_scope', citations: []. Output strictly valid JSON matching the schema.";
+      payload.mode === "research"
+        ? "Reminder: apply the EPISTEMIC RULES. Archive facts → cite [E#]. Your own analysis → label it. " +
+          "Conversational turns → warm, brief, citations []. Out of scope → politely decline with scope: 'out_of_scope', citations: []. Output strictly valid JSON matching the schema."
+        : "Reminder: apply the EPISTEMIC RULES. Archive facts → cite [E#]. Your own analysis → label it. " +
+          "Output strictly valid JSON matching the schema.";
 
     const systemPrompt = `${payload.system_prompt}\n\n${userPromptReminder}`;
 

@@ -373,7 +373,7 @@ async def submit_message(
             ) from exc
 
     # Streaming SSE generator with 15-second heartbeat ping (BA6)
-    async def event_generator():
+    async def event_generator() -> Any:
         queue: asyncio.Queue[dict[str, Any] | Exception | None] = asyncio.Queue()
 
         async def stream_producer():

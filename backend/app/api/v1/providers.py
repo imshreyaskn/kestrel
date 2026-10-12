@@ -15,7 +15,7 @@ router = APIRouter(prefix="/providers", tags=["providers"])
 
 
 @router.get("")
-async def get_providers_status():
+async def get_providers_status() -> dict[str, Any]:
     """
     Check availability of local Ollama and configured cloud LLM providers.
     Uses short 1.5-second timeout to never block frontend UI.

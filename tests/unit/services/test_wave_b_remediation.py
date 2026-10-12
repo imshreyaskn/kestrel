@@ -51,10 +51,16 @@ async def test_growth_brief_update_handles_stale_data_error():
     )
 
     mock_db = AsyncMock()
-    mock_db.commit.side_effect = StaleDataError("Row was updated or deleted by another transaction")
+    mock_db.commit.side_effect = StaleDataError(
+        "Row was updated or deleted by another transaction"
+    )
 
-    with patch.object(GrowthBriefService, "get_growth_brief", new=AsyncMock(return_value=mock_brief)):
-        with pytest.raises(ValueError, match=f"Version conflict on growth brief {brief_id}"):
+    with patch.object(
+        GrowthBriefService, "get_growth_brief", new=AsyncMock(return_value=mock_brief)
+    ):
+        with pytest.raises(
+            ValueError, match=f"Version conflict on growth brief {brief_id}"
+        ):
             await GrowthBriefService.update_growth_brief(
                 db=mock_db,
                 brief_id=brief_id,
@@ -81,10 +87,16 @@ async def test_artifact_update_handles_stale_data_error():
     )
 
     mock_db = AsyncMock()
-    mock_db.commit.side_effect = StaleDataError("Row was updated or deleted by another transaction")
+    mock_db.commit.side_effect = StaleDataError(
+        "Row was updated or deleted by another transaction"
+    )
 
-    with patch.object(ArtifactService, "get_artifact", new=AsyncMock(return_value=mock_artifact)):
-        with pytest.raises(ValueError, match=f"Version conflict on artifact {artifact_id}"):
+    with patch.object(
+        ArtifactService, "get_artifact", new=AsyncMock(return_value=mock_artifact)
+    ):
+        with pytest.raises(
+            ValueError, match=f"Version conflict on artifact {artifact_id}"
+        ):
             await ArtifactService.update_artifact(
                 db=mock_db,
                 artifact_id=artifact_id,

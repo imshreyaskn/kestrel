@@ -122,7 +122,9 @@ if (-not (Test-Path $envFile)) {
 # Ensure INTERNAL_SERVICE_TOKEN is populated
 $envContent = Get-Content $envFile -Raw
 if ($envContent -notmatch "INTERNAL_SERVICE_TOKEN=.+" -or $envContent -match "INTERNAL_SERVICE_TOKEN=(dev-internal-token-change-me|replace-with-a-long-random-local-token)") {
-    $randomToken = [Convert]::ToHexString((1..32 | ForEach-Object { Get-Random -Minimum 0 -Maximum 256 }))
+    $bytes = [byte[]]::new(32)
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $randomToken = [Convert]::ToHexString($bytes).ToLowerInvariant()
     if ($envContent -match "INTERNAL_SERVICE_TOKEN=") {
         $envContent = $envContent -replace "INTERNAL_SERVICE_TOKEN=.*", "INTERNAL_SERVICE_TOKEN=$randomToken"
     } else {

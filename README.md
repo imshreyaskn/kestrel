@@ -25,6 +25,23 @@
 
 ---
 
+## Required Deliverables & Documentation Index
+
+For evaluators reviewing this Forward Deployed Engineer assignment, every deliverable specified in **Section 6** is cataloged and directly accessible below:
+
+| # | Deliverable | Repository Path | Description |
+|:---:|---|---|---|
+| **1** | **Public GitHub Repository** | [imshreyaskn/kestrel](https://github.com/imshreyaskn/kestrel) | Complete, clean source code with reproducible one-command setup and zero committed secrets. |
+| **2** | **README.md** | [README.md](README.md) | Architecture, prerequisites, local Ollama & cloud LLM configuration, quickstart, and handoff. |
+| **3** | **PRD** | [docs/PRD.md](docs/PRD.md) | Discovery brief, user problem, measurable success metrics, assumptions, scope choices, and risks. |
+| **4** | **design.md** | [docs/design.md](docs/design.md) | Editorial Research Studio design system, visual hierarchy, IA, interaction states, accessibility. |
+| **5** | **architecture.md** | [docs/architecture.md](docs/architecture.md) | DB schema, hybrid retrieval, agent gateway, model toggle, sandboxed artifact viewer CSP, topology. |
+| **6** | **Agent Transcripts** | [agent-transcripts/](agent-transcripts/) | 17 chronological agent transcripts documenting engineering attempts, failures, and corrections. |
+| **7** | **Tests** | [tests/](tests/) · [manual-test-plan.md](docs/manual-test-plan.md) | 176 backend + 102 frontend automated tests, plus a 22-case human manual test plan (MT-01…MT-22). |
+| **8** | **Demo Video** | [Demo Video Guidance](#demo-video) | 2–3 minute video walkthrough of the problem, live local Ollama demo, and key architectural trade-offs. |
+
+---
+
 ## Overview
 
 Kestrel is a conversational growth-research companion for product leaders, growth operators, and founders.
@@ -676,19 +693,19 @@ Honest boundaries of v1, by design:
 
 | Document | What it covers |
 |---|---|
-| `docs/PRD.md` | Discovery brief, personas, success metrics, assumptions, scope, risk register, traceability matrix |
-| `docs/architecture.md` | Schema, endpoints, component boundaries, flows, deployment topology |
-| `docs/design.md` | Design system: tokens, IA, interaction states, responsive + accessibility |
-| `IMPLEMENTATION_SPEC.md` | The canonical build specification this repo implements |
-| `docs/manual-test-plan.md` | UI test plan for humans (MT-01 … MT-22 with evidence to capture) |
-| `docs/ADRs/` | Architecture decision records (agent runtime choice, with amendment) |
-| `docs/audits/` | The independent audit cycle and its rebaseline verification, indexed with remediation mapping |
-| `docs/proposals/` | Deferred designs — multi-provider credential management |
-| `docs/evaluation/retrieval_cases.yaml` | The 20-case retrieval fixture |
-| `uiux-research/` | Design research ("Bone & Aubergine") + HTML prototypes |
-| `agent-transcripts/` | Phase-by-phase evidence logs, including failures and corrections |
-| `AGENTS.md` · `.agents/` | Repo rules and verification gates for coding agents |
-| `START_HERE.md` | Specification-first onboarding |
+| [`docs/PRD.md`](docs/PRD.md) | Discovery brief, personas, success metrics, assumptions, scope, risk register, traceability matrix |
+| [`docs/architecture.md`](docs/architecture.md) | Schema, endpoints, component boundaries, flows, deployment topology |
+| [`docs/design.md`](docs/design.md) | Design system: tokens, IA, interaction states, responsive + accessibility |
+| [`IMPLEMENTATION_SPEC.md`](IMPLEMENTATION_SPEC.md) | The canonical build specification this repo implements |
+| [`docs/manual-test-plan.md`](docs/manual-test-plan.md) | UI test plan for humans (MT-01 … MT-22 with evidence to capture) |
+| [`docs/ADRs/`](docs/ADRs/) | Architecture decision records (agent runtime choice, with amendment) |
+| [`docs/audit/`](docs/audit/) | The independent audit cycle and its rebaseline verification, indexed with remediation mapping |
+| [`docs/proposals/`](docs/proposals/) | Deferred designs — multi-provider credential management |
+| [`docs/evaluation/retrieval_cases.yaml`](docs/evaluation/retrieval_cases.yaml) | The 20-case retrieval fixture |
+| [`uiux-research/`](uiux-research/) | Design research ("Bone & Aubergine") + HTML prototypes |
+| [`agent-transcripts/`](agent-transcripts/) | Phase-by-phase evidence logs, including failures and corrections |
+| [`AGENTS.md`](AGENTS.md) · [`.agents/`](.agents/) | Repo rules and verification gates for coding agents |
+| [`START_HERE.md`](START_HERE.md) | Specification-first onboarding |
 
 ---
 

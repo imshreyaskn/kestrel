@@ -132,9 +132,19 @@ async def test_conversation_service_idempotent_deduplication():
     mock_db = AsyncMock()
 
     with (
-        patch.object(SessionService, "get_session", new=AsyncMock(return_value=fake_session)),
-        patch.object(SessionService, "get_message_by_idempotency_key", new=AsyncMock(return_value=existing_user_msg)),
-        patch.object(SessionService, "get_assistant_reply_for_user_message", new=AsyncMock(return_value=cached_assistant)),
+        patch.object(
+            SessionService, "get_session", new=AsyncMock(return_value=fake_session)
+        ),
+        patch.object(
+            SessionService,
+            "get_message_by_idempotency_key",
+            new=AsyncMock(return_value=existing_user_msg),
+        ),
+        patch.object(
+            SessionService,
+            "get_assistant_reply_for_user_message",
+            new=AsyncMock(return_value=cached_assistant),
+        ),
     ):
         events = []
         async for evt in default_conversation_service.process_message_stream(
@@ -181,8 +191,14 @@ def test_submit_message_passes_idempotency_key():
     }
 
     with (
-        patch("backend.app.api.v1.sessions.default_session_service.get_session", new=AsyncMock(return_value=fake_session)),
-        patch("backend.app.api.v1.sessions.default_conversation_service.process_message", new=AsyncMock(return_value=mock_response)) as mock_process,
+        patch(
+            "backend.app.api.v1.sessions.default_session_service.get_session",
+            new=AsyncMock(return_value=fake_session),
+        ),
+        patch(
+            "backend.app.api.v1.sessions.default_conversation_service.process_message",
+            new=AsyncMock(return_value=mock_response),
+        ) as mock_process,
     ):
         resp = client.post(
             f"/api/v1/sessions/{session_id}/messages",
@@ -198,15 +214,21 @@ def test_submit_message_passes_idempotency_key():
 def test_sources_openapi_documentation():
     """BA20: Verify OpenAPI docs exist on public corpus routes."""
     routes = {r.path: r for r in app.routes if hasattr(r, "path")}
-    
+
     assert "/api/v1/sources/{source_id}" in routes
     source_route = routes["/api/v1/sources/{source_id}"]
-    assert "public knowledge base" in source_route.description.lower() or "transcript" in source_route.description.lower()
+    assert (
+        "public knowledge base" in source_route.description.lower()
+        or "transcript" in source_route.description.lower()
+    )
     assert source_route.summary == "Get transcript source metadata"
 
     assert "/api/v1/chunks/{chunk_id}" in routes
     chunk_route = routes["/api/v1/chunks/{chunk_id}"]
-    assert "citation inspection" in chunk_route.description.lower() or "chunk" in chunk_route.description.lower()
+    assert (
+        "citation inspection" in chunk_route.description.lower()
+        or "chunk" in chunk_route.description.lower()
+    )
     assert chunk_route.summary == "Get transcript chunk text and evidence metadata"
 
     assert "/api/v1/ingestion/status" in routes

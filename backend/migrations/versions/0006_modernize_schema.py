@@ -64,11 +64,15 @@ def downgrade() -> None:
     )
     op.add_column(
         "chat_sessions",
-        sa.Column("provider", sa.String(length=32), nullable=False, server_default="local"),
+        sa.Column(
+            "provider", sa.String(length=32), nullable=False, server_default="local"
+        ),
     )
     op.add_column(
         "messages",
-        sa.Column("mode", sa.String(length=32), nullable=False, server_default="research"),
+        sa.Column(
+            "mode", sa.String(length=32), nullable=False, server_default="research"
+        ),
     )
 
     # Drop idempotency key

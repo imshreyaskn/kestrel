@@ -104,7 +104,9 @@ async def lifespan(app: FastAPI):
         from backend.app.services.session_service import default_session_service
 
         async with async_session_factory() as db:
-            reconciled = await default_session_service.reconcile_stale_pending_messages(db)
+            reconciled = await default_session_service.reconcile_stale_pending_messages(
+                db
+            )
             if reconciled > 0:
                 logger.info(
                     "Reconciled stale pending messages on startup",

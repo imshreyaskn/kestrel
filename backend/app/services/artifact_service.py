@@ -123,9 +123,7 @@ class ArtifactService:
             await db.refresh(artifact)
         except StaleDataError as exc:
             await db.rollback()
-            raise ValueError(
-                f"Version conflict on artifact {artifact_id}"
-            ) from exc
+            raise ValueError(f"Version conflict on artifact {artifact_id}") from exc
         return artifact
 
 

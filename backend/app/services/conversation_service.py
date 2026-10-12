@@ -167,6 +167,12 @@ def classify_generation_error(exc: BaseException) -> tuple[str, str, bool]:
             "Internal service authentication failed.",
             False,
         )
+    if type(exc).__name__ == "EmbeddingError":
+        return (
+            "RETRIEVAL_UNAVAILABLE",
+            "The embedding model is unreachable — verify Ollama is running.",
+            True,
+        )
     if isinstance(exc, ConnectionError):
         return (
             "AGENT_UNAVAILABLE",
@@ -407,10 +413,8 @@ class ConversationService:
 
             # 1b. Check idempotency deduplication (BA15)
             if idempotency_key:
-                existing_user_msg = (
-                    await SessionService.get_message_by_idempotency_key(
-                        db, session_id, idempotency_key
-                    )
+                existing_user_msg = await SessionService.get_message_by_idempotency_key(
+                    db, session_id, idempotency_key
                 )
                 if existing_user_msg:
                     assistant_reply = (
@@ -475,18 +479,34 @@ class ConversationService:
                                     "metadata": assistant_reply.metadata_ or {},
                                 },
                                 "citations": citation_payloads,
-                                "insufficient_evidence": False,
+                                "insufficient_evidence": bool(
+                                    (assistant_reply.metadata_ or {}).get(
+                                        "insufficient_evidence", False
+                                    )
+                                ),
                                 "growth_brief_id": (
                                     assistant_reply.metadata_ or {}
                                 ).get("growth_brief_id"),
-                                "artifact_id": (
-                                    assistant_reply.metadata_ or {}
-                                ).get("artifact_id"),
-                                "weak_evidence": False,
+                                "artifact_id": (assistant_reply.metadata_ or {}).get(
+                                    "artifact_id"
+                                ),
+                                "weak_evidence": bool(
+                                    (assistant_reply.metadata_ or {}).get(
+                                        "weak_evidence", False
+                                    )
+                                ),
                             },
                         }
                         return
-                    if assistant_reply and assistant_reply.status == "pending":
+                    if assistant_reply and assistant_reply.status in (
+                        "failed",
+                        "cancelled",
+                    ):
+                        # A dead attempt must not block its own retry: release the key so the
+                        # new turn can claim it. The failed pair stays visible as history.
+                        existing_user_msg.idempotency_key = None
+                        await db.commit()
+                    elif assistant_reply and assistant_reply.status == "pending":
                         yield {
                             "event": "error",
                             "data": {
@@ -870,6 +890,12 @@ class ConversationService:
                     e.evidence_id: e.rrf_score for e in evidence_items
                 },
                 "gateway_latency_ms": gw_result.latency_ms,
+                "insufficient_evidence": bool(
+                    getattr(validated, "insufficient_evidence", False)
+                ),
+                "weak_evidence": bool(
+                    getattr(retrieval_res, "weak_evidence", False)
+                ),
             }
             if gw_result.usage:
                 meta_payload["token_usage"] = gw_result.usage
@@ -892,7 +918,7 @@ class ConversationService:
             # Persist message_sources join table records for validated citations.
             # retrieval_rank is the ordinal position in the final fused
             # evidence ranking for this run (CIT4).
-            citation_payloads: list[dict[str, Any]] = []
+            citation_payloads = []
             seen_chunks: set[uuid.UUID] = set()
             seen_eids: set[str] = set()
             for cit in getattr(validated, "citations", []):

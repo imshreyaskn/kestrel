@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import {
   AppView,
   ArtifactData,
@@ -87,7 +88,7 @@ export const App: React.FC = () => {
   // Refs
   const sheetRef = useRef<HTMLElement>(null);
   const streamCtlRef = useRef<{ cancel: () => void } | null>(null);
-  const lastRunRef = useRef<{ text: string; mode: ComposeMode; format: ArtifactKind } | null>(null);
+  const lastRunRef = useRef<{ text: string; mode: ComposeMode; format: ArtifactKind; productContext?: string } | null>(null);
   const isStrikingRef = useRef(false);
   const strikeTimerRef = useRef<number | null>(null);
 
@@ -376,12 +377,11 @@ export const App: React.FC = () => {
             : 'The cloud provider is not configured — add its API key server-side',
           'danger'
         );
-      }
-      setActiveProvider(newProv);
-      if (provObj) {
+      } else if (provObj) {
         showToast(`Provider set to ${provObj.name.toLowerCase()} — ${provObj.model}`);
         announce(`Provider set to ${provObj.name}.`);
       }
+      setActiveProvider(newProv);
     },
     [providers, showToast, announce]
   );
@@ -403,12 +403,11 @@ export const App: React.FC = () => {
       setComposingSteps(initialSteps);
       announce(stageDefs[0][0]);
 
-      const stageMap: Record<string, number> = {
-        loading_context: 0,
-        retrieving: 1,
-        drafting: 2,
-        validating: 3,
-        saving: 4,
+      const STAGE_MAP_BY_MODE: Record<ComposeMode, Record<string, number>> = {
+        research: { loading_context: 0, retrieving: 0, drafting: 1, validating: 2, saving: 3 },
+        growth_brief: { loading_context: 0, retrieving: 0, drafting: 1, validating: 2, saving: 3 },
+        artifact: { loading_context: 0, retrieving: 0, drafting: 1, validating: 2, saving: 3 },
+        essay: { loading_context: 0, retrieving: 1, drafting: 2, validating: 3, saving: 3 },
       };
 
       const modelName =
@@ -425,7 +424,7 @@ export const App: React.FC = () => {
         },
         {
           onStage: (stage, label) => {
-            const activeIdx = stageMap[stage] ?? 0;
+            const activeIdx = STAGE_MAP_BY_MODE[mode]?.[stage] ?? 0;
             setComposingSteps((prev) =>
               prev.map((step, idx) => ({
                 ...step,
@@ -633,7 +632,7 @@ export const App: React.FC = () => {
   // ---------------------------------------------------------------
   const handleSubmitQuery = useCallback(
     async (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => {
-      lastRunRef.current = { text, mode, format };
+      lastRunRef.current = { text, mode, format, productContext };
       setActiveMode(mode);
       let currentSession = activeSession;
       const isInitialSwitch = view === 'frontmatter' || !currentSession;
@@ -680,8 +679,10 @@ export const App: React.FC = () => {
         // Initial transition: Frontmatter -> Manuscript
         if ('startViewTransition' in document && !prefersReducedMotion()) {
           (document as any).startViewTransition(() => {
-            setView('manuscript');
-            appendQueryEntry();
+            flushSync(() => {
+              setView('manuscript');
+              appendQueryEntry();
+            });
             window.scrollTo({ top: 0, behavior: 'instant' });
           });
         } else {
@@ -709,7 +710,7 @@ export const App: React.FC = () => {
   const handleRetryLast = useCallback(() => {
     const last = lastRunRef.current;
     if (last) {
-      handleSubmitQuery(last.text, last.mode, last.format);
+      handleSubmitQuery(last.text, last.mode, last.format, last.productContext);
     }
   }, [handleSubmitQuery]);
 
@@ -722,6 +723,7 @@ export const App: React.FC = () => {
       const mode = last?.mode || 'research';
       const format = last?.format || 'markdown';
       const queryText = text || last?.text || '';
+      const productContext = last?.productContext;
 
       // Replace the failed message by removing it from the session entries
       setSessions((prev) =>
@@ -733,7 +735,7 @@ export const App: React.FC = () => {
       );
 
       // Re-run the composing pipeline with the query
-      runComposingPipeline(currentSession, queryText, mode, format);
+      runComposingPipeline(currentSession, queryText, mode, format, productContext);
     },
     [activeSession, runComposingPipeline]
   );

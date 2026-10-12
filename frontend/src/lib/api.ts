@@ -417,6 +417,7 @@ function streamMessage(
     reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let sawTerminal = false;
 
     try {
       while (true) {
@@ -439,8 +440,10 @@ function streamMessage(
           } else if (evt.event === 'stage') {
             callbacks.onStage?.(parsed.stage, parsed.label || parsed.stage);
           } else if (evt.event === 'completed') {
+            sawTerminal = true;
             callbacks.onComplete?.(parsed as CompletedStreamData);
           } else if (evt.event === 'error') {
+            sawTerminal = true;
             callbacks.onError?.(
               parsed.error || { code: 'GENERATION_ERROR', message: 'Generation failed' }
             );
@@ -449,6 +452,11 @@ function streamMessage(
       }
       if (cancelled) {
         callbacks.onCancelled?.();
+      } else if (!sawTerminal) {
+        callbacks.onError?.({
+          code: 'STREAM_CLOSED',
+          message: 'The stream ended without a result',
+        });
       }
     } catch (streamErr) {
       if (cancelled) {
@@ -486,7 +494,7 @@ export const api = {
   },
 
   /**
-   * Live provider registry (config.py route shape, the mounted contract):
+   * Live provider registry (providers.py route shape):
    * { local: {provider, available, version, model}, cloud: {configured_provider, gemini|anthropic|openai} }.
    * Network failure maps to honest offline statuses — never to fake readiness.
    */

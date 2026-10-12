@@ -175,17 +175,21 @@ def test_sync_archive_tar_enforces_pep706(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("httpx.Client", MockClient)
     with pytest.raises(RuntimeError, match="PEP 706"):
         sync_transcripts_repo(
-            tmp_path / "target", repo_url=None, archive_url="http://fake.tar.gz"
+            tmp_path / "target", repo_url="", archive_url="http://fake.tar.gz"
         )
 
 
 @pytest.mark.asyncio
-async def test_indexer_updates_existing_source_by_soft_deactivating_chunks(tmp_path: Path):
+async def test_indexer_updates_existing_source_by_soft_deactivating_chunks(
+    tmp_path: Path,
+):
     """When a source content changes, old chunks are soft-deactivated (is_active=False) instead of deleted."""
     ep_dir = tmp_path / "episodes" / "changed-ep"
     ep_dir.mkdir(parents=True)
     transcript_file = ep_dir / "transcript.md"
-    content = "---\nguest: Bob\ntitle: Bob on Growth\n---\n\nBob (00:00:00):\nNew content.\n"
+    content = (
+        "---\nguest: Bob\ntitle: Bob on Growth\n---\n\nBob (00:00:00):\nNew content.\n"
+    )
     transcript_file.write_text(content, encoding="utf-8")
 
     source_id = uuid.uuid4()
@@ -232,6 +236,6 @@ async def test_indexer_updates_existing_source_by_soft_deactivating_chunks(tmp_p
     stmt = update_call.args[0]
     # Check that it is an Update statement and NOT a Delete statement
     from sqlalchemy.sql.dml import Update
-    assert isinstance(stmt, Update)
-    assert stmt.table.name == "transcript_chunks"
 
+    assert isinstance(stmt, Update)
+    assert getattr(stmt.table, "name", str(stmt.table)) == "transcript_chunks"

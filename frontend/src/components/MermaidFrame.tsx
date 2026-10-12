@@ -87,6 +87,9 @@ export const MermaidFrame: React.FC<MermaidFrameProps> = ({ code }) => {
 
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
+      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) {
+        return;
+      }
       if (
         e.data &&
         e.data.t === 'mm-height' &&

@@ -125,9 +125,7 @@ class Message(Base):
     seq: Mapped[int] = mapped_column(
         sa.BigInteger, sa.Identity(start=1), nullable=False
     )
-    idempotency_key: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     workflow_mode: Mapped[str | None] = mapped_column(

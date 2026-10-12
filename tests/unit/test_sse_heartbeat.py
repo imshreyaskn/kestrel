@@ -35,13 +35,17 @@ async def test_sse_heartbeat_ping_during_drafting():
         await asyncio.sleep(0.12)
         yield {"event": "completed", "data": {"status": "complete"}}
 
-    with patch(
-        "backend.app.api.v1.sessions.default_session_service.get_session",
-        new=AsyncMock(return_value=fake_session),
-    ), patch(
-        "backend.app.api.v1.sessions.default_conversation_service.process_message_stream",
-        side_effect=slow_stream,
-    ), patch("backend.app.api.v1.sessions.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.04):
+    with (
+        patch(
+            "backend.app.api.v1.sessions.default_session_service.get_session",
+            new=AsyncMock(return_value=fake_session),
+        ),
+        patch(
+            "backend.app.api.v1.sessions.default_conversation_service.process_message_stream",
+            side_effect=slow_stream,
+        ),
+        patch("backend.app.api.v1.sessions.SSE_HEARTBEAT_INTERVAL_SECONDS", 0.04),
+    ):
         response = client.post(
             f"/api/v1/sessions/{session_id}/messages",
             json={

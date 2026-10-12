@@ -86,7 +86,12 @@ def _overlaps(
     """Check if two candidates from the same episode overlap significantly by char range."""
     if a.source_id != b.source_id:
         return False
-    if None in (a.char_start, a.char_end, b.char_start, b.char_end):
+    if (
+        a.char_start is None
+        or a.char_end is None
+        or b.char_start is None
+        or b.char_end is None
+    ):
         return a.content == b.content
     inter = max(0, min(a.char_end, b.char_end) - max(a.char_start, b.char_start))
     shorter = min(a.char_end - a.char_start, b.char_end - b.char_start)

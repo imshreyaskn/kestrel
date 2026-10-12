@@ -33,6 +33,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     # Spec §13.1: the gateway is an internal service with no host-published
     # port. Diagnostics go through the API readiness probe (which checks the
     # gateway) or the opt-in compose.dev.yml override.
@@ -73,11 +78,16 @@ services:
       - ./alembic.ini:/app/alembic.ini:ro
     ports:
       - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     depends_on:
       db:
         condition: service_healthy
       agent-gateway:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
