@@ -1,66 +1,406 @@
-# The Lenny Growth Assistant (Codename: Kestrel)
+<div align="center">
 
-An evidence-first product and growth research workbench that synthesizes knowledge from **Lenny’s Podcast transcripts** into grounded decisions, structured Growth Briefs, Ship 30 essays, and sandboxed visual deliverables—with 100% source provenance.
+<h1>Kestrel</h1>
+
+<h3>The Lenny Growth Assistant</h3>
+
+<p>
+  An evidence-first growth research workbench that turns Lenny's Podcast
+  transcripts into grounded answers, structured Growth Briefs,
+  Ship 30 for 30 essays, and sandboxed visual deliverables —
+  with 100% source provenance.
+</p>
+
+<br />
+
+<a href="https://github.com/imshreyaskn/kestrel">
+  <img src="https://img.shields.io/badge/GitHub-imshreyaskn%2Fkestrel-4A1F3D?style=for-the-badge" />
+</a>
+<img src="https://img.shields.io/badge/tests-176%20backend%20·%20103%20frontend-3D5A4A?style=for-the-badge" />
+<img src="https://img.shields.io/badge/Python-3.13%20·%20FastAPI-161614?style=for-the-badge" />
+<img src="https://img.shields.io/badge/Node-22%20·%20Pi%20AI-161614?style=for-the-badge" />
+<img src="https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4A1F3D?style=for-the-badge" />
+
+</div>
 
 ---
 
-## 1. Architecture Overview
+## Overview
 
-Kestrel is built with a dual-service architecture designed for strict evidence provenance, multi-provider flexibility, and isolated artifact rendering:
+Kestrel is a conversational growth-research companion for product leaders, growth operators, and founders.
+
+It pairs two kinds of intelligence: **archive knowledge** — what Lenny's Podcast guests actually said, retrieved from the transcript corpus and cited down to the exact passage — and **the assistant's own reasoning**, clearly labeled, built on top of that evidence.
+
+Every answer, brief, essay, and artifact is traceable to stored transcript chunks. Nothing is invented silently: when the archive cannot support a claim, Kestrel says so and shows the gap instead of filling it.
+
+```mermaid
+flowchart LR
+    A[Reader] --> B[Dossier Workbench]
+    B --> C[FastAPI Application]
+    C --> D[(PostgreSQL + pgvector)]
+    C --> E[Pi Agent Gateway]
+    E --> F[Ollama · Local]
+    E --> G[Gemini · Anthropic · OpenAI]
+    C --> H[Hybrid Retrieval]
+    H --> D
+```
+
+---
+
+# How It Works
+
+A message entering Kestrel passes through a deterministic pipeline. The model is never responsible for fetching its own evidence — retrieval, validation, and persistence are owned by the backend.
 
 ```mermaid
 flowchart TD
-    subgraph Frontend ["Editorial Research Studio (React 18 + TypeScript + Vite)"]
-        UI[Dossier Interface: Frontmatter, Manuscript & Marginalia]
-        PV[Sandboxed Plate Viewer: iframe sandbox + CSP]
-    end
-
-    subgraph Backend ["FastAPI Application Core (Python 3.13)"]
-        Router[REST & SSE Endpoints: /sessions, /sources, /briefs, /artifacts]
-        ConvSvc[Conversation Service & SSE Stage Generator]
-        Hybrid[Hybrid Retrieval: pgvector Dense + tsvector Sparse FTS]
-        Validator[Schema & Citation Hallucination Pruner]
-        Sanitizer[nh3 HTML Sanitizer & CSP Meta Injector]
-    end
-
-    subgraph Gateway ["Agent Gateway Service (Node.js 22 Container)"]
-        PiCore[@earendil-works/pi-ai Runtime & Model Provider Registry]
-    end
-
-    subgraph Database ["PostgreSQL 16 + pgvector"]
-        PG[(Tables: users, chat_sessions, messages, sources, chunks, briefs, artifacts)]
-    end
-
-    subgraph Inference ["Inference Providers"]
-        Ollama[Host Ollama: qwen2.5:1.5b / embeddinggemma]
-        Cloud[Google Gemini 2.0 Flash / Anthropic Claude / OpenAI]
-    end
-
-    UI -->|REST & SSE Events| Router
-    Router --> ConvSvc
-    ConvSvc --> Hybrid
-    Hybrid -->|Cosine + TSVECTOR @@ FTS| PG
-    ConvSvc -->|Internal HTTP| PiCore
-    PiCore -->|Local Offline| Ollama
-    PiCore -->|Cloud Key| Cloud
-    ConvSvc --> Validator
-    ConvSvc --> Sanitizer
-    ConvSvc --> PG
-    PV -.->|Isolated Preview| UI
+    A[Message Submitted] --> B[Load Session Context]
+    B --> C[Hybrid Retrieval]
+    C --> D[Evidence Labeling E1...En]
+    D --> E[System Prompt Assembly]
+    E --> F[Model Drafting via Gateway]
+    F --> G[Output + Citation Validation]
+    G -->|Invalid| H[One Typed Repair Attempt]
+    H --> G
+    G -->|Valid| I[Atomic Persistence]
+    I --> J[SSE completed Event]
+    G -->|Still Invalid| K[Typed Error Envelope]
 ```
 
-- **FastAPI Backend (`backend/`):** Authoritative owner of session identity, PostgreSQL persistence, hybrid retrieval (`pgvector` + `tsvector`), citation verification, and security boundaries.
-- **Pi Agent Gateway (`agent-gateway/`):** Execution runtime implementing multi-provider generation via the **Pi Coding Agent SDK (`@earendil-works/pi-ai`)** in Node.js 22.
-- **Workbench Frontend (`frontend/`):** Editorial Research Studio (Dossier) visual language, conversation stream, and side-by-side artifact preview in isolated sandboxed iframes.
-- **PostgreSQL 16 with pgvector:** Single persistent store of truth for sessions, transcript chunks, embeddings, briefs, and artifacts.
+Each phase is streamed to the UI as a Server-Sent Event, so the reader watches the work happen:
+
+```text
+run_started   →  stage: loading_context  →  stage: retrieving
+              →  stage: drafting         →  stage: validating
+              →  stage: saving           →  completed
+```
+
+A 15-second heartbeat keeps long generations alive through proxies.
+
+Striking a run cancels the stream, marks the assistant row `cancelled`, and persists nothing — partial drafts never become answers.
 
 ---
 
-## 2. Quickstart & One-Command Startup
+# Workflow Modes
 
-### The One-Command Bootstrap (Recommended)
+The UI provides deterministic mode actions. The backend validates the mode explicitly and never relies on implicit model classification.
 
-Kestrel provides single-command bootstrap scripts conforming to IMPLEMENTATION_SPEC §13.2 that automate prerequisites checking, model readiness, environment configuration, database migrations, knowledge-base indexing, and browser launch:
+| Mode | Output | Contract |
+|---|---|---|
+| `research` | Grounded answer with inline `[E#]` citations | Answer-first, proportional depth, honest-gap shape when evidence is thin |
+| `growth_brief` | Structured five-section brief persisted to the workbench | Problem → research summary → recommendation → experiment plan → risks, with guardrail metric and decision rule |
+| `essay` | Ship 30 for 30 digital essay | ~1,250 words, hard-validated 1,150–1,350 (or an explicit user target), one of four writing paths |
+| `artifact_markdown` | Standalone Markdown document ("plate") | Publication-grade craft rules, secure sandboxed Mermaid diagrams where structure helps |
+| `artifact_html` | Complete HTML/CSS document | Self-contained, script-free, sanitized with nh3 and sandboxed on render |
+
+---
+
+# The Dossier Experience
+
+The frontend is an **editorial research dossier** — a column of prose with a margin of apparatus, not a chat template.
+
+* **Manuscript column** — queries and answers set as folio entries with drop caps, roman-numeral sections, and oldstyle numerals.
+* **Margin sidenotes** — citations live in the margin as collapsed chips; hovering a bead peeks the quote in place, clicking expands the full note and draws the leader line.
+* **Leader lines** — hand-drawn bezier curves connect each in-text bead to its margin note. Calm at rest, ink-drawn on arrival, hot-highlighted as one object across bead, line, note, and paragraph. Driven by non-ratcheting SVG percentage sizing (`width: 100%`, `height: 100%`) so parent scroll height never sticks to historical maxima.
+* **Right-Side Deliverables Shelf (Folio Dock)** — bound Growth Briefs and visual Plate deliverables live on a dedicated right-hand shelf. Features **progressive disclosure** (completely hidden when 0 deliverables exist in the session) and **collision avoidance** (smoothly glides down to `top: 310px` when the Colophon model-selector opens, returning to `top: 70px` when closed).
+* **The Fold** — Growth Briefs open as a 3D paper fold with editable sections, evidence/synthesis/user-context badges, and optimistic version locking.
+* **Plates & Sandboxed Mermaid** — Markdown and HTML artifacts render beside the chat in the margin and in a full viewer with Preview/Source toggle. Mermaid diagrams in Markdown plates render inside opaque-origin sandboxed iframes (`sandbox="allow-scripts"` with CSP `default-src 'none'; style-src 'unsafe-inline'`), styled to Kestrel's editorial palette.
+* **Continuous Folio & Endmark** — rationalized bottom padding ensures clean editorial breathing room above the fixed bottom composer bar without awkward empty whitespace below the `End of folio` stamp.
+* **Design tour** — a states tray previews every key UI state; tour fixtures are clearly marked and never persisted.
+
+## One number, one truth
+
+Citations use a single numbering system end to end: the retrieval rank.
+
+```text
+[E3] in the answer text  =  bead 3  =  margin note 3  =  rank 3 in the database
+```
+
+* Evidence labels `E1…En` are assigned by fused retrieval rank, per run.
+* Invalid labels are stripped; labels the model used in text but forgot in its citations array are **auto-added** — every marker you can see is clickable, and every note has a marker.
+* Excerpts are always read from the stored transcript chunk, never from model-generated quote text.
+* Each note exposes its provenance: retrieval rank and fused RRF score.
+* Numbering is stable across reloads — history is ordered by rank, and stale markers from earlier turns are stripped from replayed context so `E1` never means two different passages.
+
+---
+
+# Knowledge Base
+
+## Ingestion
+
+Transcripts are synced from the upstream repository, parsed, chunked, embedded, and indexed by a repeatable CLI pipeline.
+
+```mermaid
+flowchart LR
+    A[Upstream Transcript Repo] --> B[Sync · git shallow or tarball]
+    B --> C[Parse · frontmatter + fallbacks]
+    C --> D[Chunk · 350-550 tokens, 60-100 overlap]
+    D --> E[Embed · Ollama embeddinggemma 768-d]
+    E --> F[(transcript_chunks + HNSW + GIN)]
+```
+
+* **Idempotent** — SHA-256 content hash per source; unchanged files skip embedding entirely.
+* **Durable volume persistence** — all 303 episodes and 16,964 chunks reside in a dedicated Docker named volume (`postgres_data:/var/lib/postgresql/data`), fully surviving container reboots, rebuilds, and daemon restarts.
+* **Durable provenance** — re-ingesting a changed episode soft-deactivates old chunks (`is_active = FALSE`) instead of cascade-deleting them, so citations in historical answers keep resolving to the exact text they supported.
+* **Safe reconciliation** — sources that disappear upstream are marked inactive (excluded from retrieval, never erased); an empty discovery set can never wipe the corpus.
+* **Isolated failures** — per-file savepoints: one broken transcript cannot poison the run; failures are counted and reported.
+* **Local transcript cache** — raw upstream transcripts are mirrored in `transcripts-cache/` on disk for offline re-indexing.
+
+```bash
+make ingest          # sync upstream + index
+make ingest-check    # knowledge base stats
+make reindex         # force full re-index (embedding model changes)
+```
+
+## Hybrid retrieval
+
+Every question is answered from a bounded, ranked evidence set — never from the whole corpus, never from model memory.
+
+```mermaid
+flowchart TD
+    A[User Question] --> B[Follow-up Expansion]
+    B --> C[Dense · pgvector cosine · HNSW]
+    B --> D[Sparse · tsvector · websearch_to_tsquery · GIN]
+    C --> E[Weighted Reciprocal Rank Fusion k=60]
+    D --> E
+    E --> F[Source Diversity Cap · 3 per episode]
+    F --> G[Evidence Set · top 8 · labeled E1...E8]
+```
+
+* **Dense + sparse fusion** — weighted RRF (0.6 dense / 0.4 sparse) merges semantic and keyword recall without mixing incompatible score scales.
+* **Follow-up aware** — short or anaphoric queries ("why does he put retention first?") are deterministically expanded with prior-turn context before retrieval.
+* **Honest sufficiency** — empty retrieval yields an explicit insufficient-evidence state; a weak-evidence advisory flag is recorded when the best dense score is marginal.
+* **Request-scoped labels** — `E1…En` exist only for the run; the backend maps them to canonical chunk IDs and episode metadata. The model never invents database IDs or URLs.
+
+### Retrieval evaluation
+
+A curated 20-case fixture (`docs/evaluation/retrieval_cases.yaml`) spans factual, semantic, framework, multi-episode, follow-up, unsupported, nuanced, and typo queries.
+
+```bash
+make benchmark       # live run against real embeddings (requires Ollama + ingested corpus)
+make benchmark-ci    # CI run with the deterministic fake embedder (fake index only)
+```
+
+The spec target is ≥ 80% relevant-source Recall@5. These are **target gates, not claimed results** — run the benchmark against your own ingested corpus to see actual numbers.
+
+---
+
+# Agent Layer
+
+## Prompt architecture
+
+The system prompt is assembled per turn from versioned parts:
+
+* **Base instructions** — identity, three-tier epistemics (archive facts cite `[E#]`; the assistant's own reasoning is welcome but labeled; user product context is fenced), untrusted-data framing, proportional answers, capability card, strict JSON contract.
+* **Mode instructions + output schema** — one per workflow mode.
+* **Runtime skills** — loaded from `runtime-skills/`, versioned, and stamped into message metadata:
+  * `ship-30-for-30` — the essay craft contract (hooks, 4A writing paths, rate of revelation, grounding rules, word bounds).
+  * `document-craft` — the deliverable style constitution (typography, tables, mermaid usage, and an explicit ban list: no emoji, no gradients, no glassmorphism, no AI-recap voice).
+* **Evidence block** — the run's labeled passages, embedded in the system prompt above untrusted user content.
+
+Transcript excerpts and conversation history are treated as **untrusted data, not instructions** — embedded commands in transcript text are explicitly refused.
+
+## Validation & repair
+
+Model output is never trusted structurally or factually:
+
+```mermaid
+flowchart LR
+    A[Raw Model Output] --> B[JSON Extraction]
+    B --> C[Schema Validation]
+    C --> D[Citation Reconciliation]
+    D -->|Clean| E[Persist]
+    D -->|Invalid| F[Typed Repair · one attempt]
+    F -->|Clean| E
+    F -->|Still Invalid| G[Typed Error]
+```
+
+* A hardened extractor handles real small-model behavior — reasoning tags, markdown fences, conversational preambles.
+* **Citation reconciliation** — hallucinated evidence IDs are stripped, inline labels the model forgot to list are auto-added, and dangling markers never reach the reader.
+* **Typed repair** — the single retry is told the *actual* failure reason (`JSON_PARSE`, `ESSAY_LENGTH`, `EMPTY_ANSWER`, `INVALID_LABELS`, `TRUNCATED`, `ARTIFACT_STYLE`) instead of a generic complaint.
+* **Truncation detection** — the provider's stop reason is propagated; a cut-off response is repaired with concision guidance, not re-run blind.
+* **Essay length gate** — outside the accepted band the draft is rejected rather than persisted; an explicit user word target re-bands the gate.
+
+## Gateway
+
+A thin Node 22 service (`agent-gateway/`) built on the **Pi AI SDK** (`@earendil-works/pi-ai`) owns provider routing and nothing else.
+
+* Internal-only: not published to the host, authenticated with a shared token, **fail-closed** when unconfigured, timing-safe comparison.
+* Model allowlists enforced at two layers (backend + gateway); client-supplied model IDs are never trusted, never silently substituted.
+* Provider-aware context and output limits: Ollama requests carry an explicit `num_ctx` (default 16384) and `num_predict`; cloud providers get per-provider output caps from the model catalog.
+* Deterministic retrieval by design (spec §6.6 / ADR-001): no shell, no filesystem, no browsing tools — the product agent has exactly one job, and its evidence is fetched for it.
+
+## Providers
+
+| Path | Provider | Default model | Notes |
+|---|---|---|---|
+| Local (mandatory for demo) | Ollama on host | `qwen2.5:1.5b` | Chat; `embeddinggemma` (768-d) powers retrieval |
+| Cloud | Google Gemini | `gemini-3.5-flash-lite` | `.env.example` suggests `gemini-3.8-flash` as the production workhorse |
+| Cloud | Anthropic | `claude-sonnet-5` | Must be a catalog ID — `claude-sonnet-latest` is **not** in the Pi AI catalog |
+| Cloud | OpenAI | `gpt-4o` | |
+
+Provider switching is explicit and user-initiated — the system never silently falls back from local to cloud.
+
+**Model tier guidance:** the 1.5B local model reliably handles research turns with the hardened extractor. Essays (1,150–1,350 words of structured JSON) declare `min_model_tier: mid` — use a larger local model or a cloud provider for consistent essay quality.
+
+---
+
+# Artifact Security
+
+Generated HTML is **untrusted by construction**. The rendering contract is deliberately explainable:
+
+| | Permitted | Blocked |
+|---|---|---|
+| Markup | A documented allowlist of 68 static tags (typography, tables, figures, lists) | `script`, `iframe`, `form`, `embed`, `object`, `meta refresh`, all event-handler attributes |
+| URLs | `http(s)`, `mailto`, `data:`, `blob:` — with forced `rel="noopener noreferrer"` | `javascript:` and every other scheme |
+| CSS | Local inline styles and `<style>` blocks | `@import`, external `url(...)`, `expression()`, `behavior:` |
+| Execution | Nothing | Scripts, network calls, forms, popups, downloads, top navigation, same-origin access |
+
+**Why:** the preview renders inside `<iframe sandbox="">` (no `allow-scripts`, no `allow-same-origin`) with a `default-src 'none'` CSP injected into the document itself. Sanitization runs server-side at save time with **nh3** (Rust/ammonia allowlist sanitizer); the browser receives an already-sanitized preview derivation and the original stays available in the Source view. Interactive JS artifacts are intentionally out of scope for v1 — that would be a separate security decision.
+
+**Mermaid diagrams** (Markdown deliverables) render through a pinned `mermaid@11.x` at `securityLevel: 'strict'`, with in-band `%%{init}%%` directives stripped before rendering, and the resulting SVG displayed inside an opaque-origin sandboxed frame (`sandbox="allow-scripts"` with CSP `default-src 'none'; style-src 'unsafe-inline'`) — diagram markup never enters the parent app DOM.
+
+**Markdown answers** render through a custom zero-dependency parser that emits React elements only — raw HTML in model output is escaped, never injected.
+
+---
+
+# Architecture
+
+```mermaid
+flowchart TB
+    UI[React Dossier Workbench]
+
+    subgraph Backend["FastAPI (backend/)"]
+        API[API v1 Routers]
+        SVC[Services · Orchestration]
+        RET[Hybrid Retrieval]
+        VAL[Validator + Repair]
+        SAN[nh3 Sanitizer + CSP]
+        ING[Ingestion CLI]
+    end
+
+    subgraph Gateway["Pi Agent Gateway (agent-gateway/)"]
+        GW[Express + zod + pi-ai]
+    end
+
+    subgraph Data["PostgreSQL 16 + pgvector"]
+        DB[(sessions · messages · sources · chunks · briefs · artifacts)]
+    end
+
+    OLL[Ollama on Host]
+    CLOUD[Gemini · Anthropic · OpenAI]
+    UP[Upstream Transcript Repo]
+
+    UI -->|HTTP + SSE| API
+    API --> SVC
+    SVC --> RET --> DB
+    SVC -->|typed generation request| GW
+    GW --> OLL
+    GW --> CLOUD
+    SVC --> VAL
+    VAL --> SAN
+    SVC --> DB
+    ING --> UP
+    ING --> OLL
+    ING --> DB
+```
+
+**Boundaries:** the backend owns identity, persistence, retrieval, citation mapping, validation, and provider policy. The gateway owns provider translation and limits. The frontend owns presentation and states. Models do not authorize their own actions, mint IDs, or fetch their own evidence.
+
+## Data model
+
+| Table | Purpose | Notable constraints |
+|---|---|---|
+| `users` | Demo identity (single-user v1) | — |
+| `chat_sessions` | Dossier containers | ownership FK, `last_message_at` |
+| `messages` | Turns with status lifecycle | `status` CHECK, monotonic `seq` ordering, JSONB metadata |
+| `message_sources` | Citation provenance | FK → chunks, retrieval rank, ordered reads |
+| `transcript_sources` | Episode metadata | unique `source_key`, `content_hash`, `is_active` |
+| `transcript_chunks` | Indexed passages | 768-d `vector` + HNSW, tsvector + GIN, `is_active` soft-delete, partial unique `(source_id, chunk_index)` |
+| `growth_briefs` | Structured deliverables | ORM `version_id_col` optimistic locking, status CHECK |
+| `artifacts` | Plates (md/html) | optimistic locking, kind CHECK, server-derived `preview_content` |
+
+Migrations are hand-written Alembic (0001–0006) with pre-validated constraint additions; the API container applies them at boot.
+
+---
+
+# Project Structure
+
+```text
+kestrel/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/            # routers: sessions, artifacts, briefs, sources, providers, health, config
+│   │   ├── services/          # conversation orchestration, sessions, briefs, artifacts
+│   │   ├── agent_client/      # gateway client, prompts, validator, skill loader
+│   │   ├── retrieval/         # hybrid search, embedder, benchmark runner
+│   │   ├── ingestion/         # syncer, parser, chunker, indexer, CLI
+│   │   ├── security/          # nh3 sanitizer + CSP preview builder
+│   │   ├── models/ core/ db/  # entities, config, sessions
+│   │   └── main.py            # app, middleware, JSON logging, lifespan
+│   └── migrations/versions/   # 0001 … 0006
+│
+├── agent-gateway/
+│   └── src/server.ts          # pi-ai provider routing, limits, internal auth
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/        # manuscript, sidenotes, leaders, fold, plates, mermaid, composer…
+│   │   ├── lib/               # api client, citation engine, motion helpers
+│   │   └── styles/dossier.css
+│   └── nginx.conf             # SPA routing with Cache-Control: no-store on index.html
+│
+├── runtime-skills/            # product skills loaded at generation time
+│   ├── ship-30-for-30/SKILL.md
+│   └── document-craft/SKILL.md
+│
+├── tests/                     # unit · integration · evaluation
+├── docs/                      # PRD · architecture · design · manual test plan · ADRs · eval fixtures
+├── agent-transcripts/         # evidence logs of every implementation phase
+├── uiux-research/             # design research + prototypes
+├── docker-compose.yml         # db · api · agent-gateway · frontend
+├── compose.dev.yml            # debug port overrides
+└── Makefile                   # every documented command
+```
+
+---
+
+# Tech Stack
+
+| Area | Technology |
+|---|---|
+| Backend | Python 3.13, FastAPI, Pydantic v2 |
+| ORM & Migrations | SQLAlchemy 2.0 (async), Alembic, asyncpg |
+| Database | PostgreSQL 16, pgvector (HNSW), tsvector (GIN) |
+| Agent Runtime | Node 22, `@earendil-works/pi-ai` |
+| Local Inference | Ollama (`qwen2.5:1.5b`, `embeddinggemma`) |
+| Cloud Providers | Gemini · Anthropic · OpenAI |
+| Frontend | React 18, TypeScript, Vite (3 runtime deps: React, ReactDOM, Mermaid) |
+| Reverse Proxy | Nginx Alpine (with no-cache headers for instant SPA freshness) |
+| Diagrams | Mermaid 11 (strict, sandboxed) |
+| Sanitization | nh3 (Rust/ammonia) |
+| Streaming | Server-Sent Events + heartbeat |
+| Testing | pytest + pytest-asyncio (176 tests) · Vitest (103 tests) |
+| Quality | ruff · mypy · tsc |
+| Containerization | Docker Compose |
+
+---
+
+# Getting Started
+
+## Prerequisites
+
+* Docker + Docker Compose
+* [Ollama](https://ollama.com) running on the host
+* The two local models:
+
+```bash
+ollama pull qwen2.5:1.5b
+ollama pull embeddinggemma
+```
+
+## The One-Command Startup (Recommended)
+
+Kestrel provides single-command bootstrap scripts that automate prerequisites checking, model readiness, environment configuration, database migrations, knowledge-base indexing, and browser launch:
 
 **On Windows (PowerShell / Command Prompt):**
 ```powershell
@@ -74,9 +414,11 @@ start.bat
 ./start.sh
 # or via Makefile:
 make up
+# or make demo
+make demo
 ```
 
-#### What the One-Command Script Does Automatically:
+### What the One-Command Script Does Automatically:
 1. **Engine Check:** Verifies Docker Engine is running.
 2. **Ollama Check:** Tests host Ollama connectivity at `http://localhost:11434`; pulls required models (`qwen2.5:1.5b` and `embeddinggemma`) if missing.
 3. **Environment Init:** Copies `.env.example` to `.env` if missing and generates a cryptographically secure 32-byte `INTERNAL_SERVICE_TOKEN`.
@@ -88,80 +430,118 @@ make up
 
 ---
 
-### Manual Setup (Step-by-Step Alternative)
+## Step-by-Step Alternative
 
-If you prefer step-by-step control:
-
-#### Step 1: Configure Environment
 ```bash
 cp .env.example .env
+# edit .env: set INTERNAL_SERVICE_TOKEN (openssl rand -hex 32)
+#            optionally add GEMINI_API_KEY for cloud mode
+
+make demo        # builds and starts db · api · gateway · frontend (migrations run at boot)
+make ingest      # syncs + indexes the transcript corpus (first run takes a few minutes)
 ```
 
-#### Step 2: Prepare Host Ollama Models (Local Mode)
+Open **http://localhost:5173**. The frontend and API are published on loopback only; the database and gateway stay internal to the compose network (debug ports via `make dev-expose`).
+
+Then ask it something real:
+
+```text
+How did Casey Winters sequence growth work at Reddit?
+why does he put retention first?          ← follow-ups stay grounded
+```
+
+…or switch the composer to **Brief / Essay / Plate** and cast a deliverable.
+
+## Cloud providers
+
+Add keys to `.env` (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`), restart, and switch providers from the colophon chip in the running head. Model IDs must exist in the Pi AI catalog — the configured defaults are catalog-verified. Provider status is visible at `GET /api/v1/providers`.
+
+## Development without Docker
+
 ```bash
-ollama pull qwen2.5:1.5b
-ollama pull embeddinggemma
+# terminal 1 — db + gateway containers with debug ports published
+make dev-expose                  # db → localhost:5433 · gateway → localhost:8010
+
+# terminal 2 — API, run from the REPO ROOT (defaults already point at the dev ports)
+pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+uvicorn backend.app.main:app --reload --port 8000
+
+# terminal 3 — frontend → http://localhost:5173
+cd frontend && npm install && npm run dev
 ```
 
-#### Step 3: Launch with Docker Compose
-```bash
-docker compose up -d
-```
-Alembic migrations are applied automatically when the `api` container boots
-(`alembic upgrade head` runs before `uvicorn`).
+The gateway runs from the `dev-expose` container; run it on the host instead (`cd agent-gateway && npm install && npm run dev`) only when editing gateway code. Ingestion works the same either way: `make ingest` targets the container.
 
-Services will start at:
-- **Workbench Frontend:** [http://localhost:5173](http://localhost:5173)
-- **FastAPI Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **API Health & Readiness:** [http://localhost:8000/api/v1/health/ready](http://localhost:8000/api/v1/health/ready)
-
-The PostgreSQL and agent-gateway services are **internal only** (no host
-ports by default, per the implementation spec). For local debugging ports, run:
-`docker compose -f docker-compose.yml -f compose.dev.yml up -d`.
-
-#### Step 4: Ingest Transcript Knowledge Base (If unindexed)
-```bash
-docker compose exec api python -m backend.app.ingestion.cli sync
-docker compose exec api python -m backend.app.ingestion.cli index
-```
-*(Ingestion is content-hash idempotent; unchanged files are skipped on subsequent runs).*
+See `START_HERE.md` for the specification-first onboarding this repo was built with.
 
 ---
 
-## 3. Key Capabilities & Deliverables
+# Configuration
 
-### 1. Grounded Research Mode & Margin Sidenotes
-- Ask questions across growth, activation, retention, pricing, and product-market fit.
-- Answers are structured with Roman numeral sections (`I.`, `II.`).
-- Every claim cites a request-scoped marker (`[1]`, `[2]`). Sidenotes in the right margin render verbatim transcript passages from stored PostgreSQL chunks (`transcript_chunks.content`), linked with dynamic SVG leader lines.
-- **Zero Hallucinated Citations:** If an LLM emits a tag `[E99]` not present in the retrieved evidence, the backend automatically prunes it before persistence.
+All settings are validated by pydantic-settings; `.env.example` documents every variable.
 
-### 2. The Fold — Growth Brief Deliverable
-- Switch mode to `Brief` or click **The Fold** in the Running Head.
-- Produces a 7-section executive deliverable: *Problem Framing*, *Grounded Research Insights*, *Strategic Recommendation*, *Assumptions*, *Controlled Growth Experiment* (Hypothesis, Change, Audience, Primary Metric, Guardrails, Decision Rule), and *Next Deliverable*.
-- Readers can edit sections directly; clicking **Bind impression** persists updates to PostgreSQL with **optimistic concurrency checks** (detecting version conflicts with HTTP 409).
+| Variable | Default | Notes |
+|---|---|---|
+| `INTERNAL_SERVICE_TOKEN` | **required** | Shared API↔gateway secret; compose refuses to start without it |
+| `DEFAULT_PROVIDER` | `local` | `local` or `cloud` |
+| `DEFAULT_CLOUD_PROVIDER` | `gemini` | `gemini` · `anthropic` · `openai` |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Must exist in the Pi AI catalog |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5` | `claude-sonnet-latest` is **not** a catalog ID |
+| `OPENAI_MODEL` | `gpt-4o` | |
+| `OLLAMA_CHAT_MODEL` | `qwen2.5:1.5b` | Must match the model pulled on the host |
+| `OLLAMA_EMBEDDING_MODEL` | `embeddinggemma` | Verified 768-d at bootstrap before serving |
+| `OLLAMA_NUM_CTX` | `16384` | Gateway-side Ollama context allocation |
+| `OLLAMA_MAX_OUTPUT` | `3072` | Local output cap (cloud caps: 8192/8192/4096) |
+| `RETRIEVAL_TOP_K` / `RETRIEVAL_MIN_SCORE` | `8` / `0.25` | Evidence budget and dense cutoff |
+| `RETRIEVAL_WEAK_DENSE` | `0.32` | Advisory weak-evidence threshold |
+| `MAX_CONTEXT_MESSAGES` | `12` | Hard message-count cap before token budgeting |
+| `HISTORY_TOKEN_BUDGET_LOCAL` / `_CLOUD` | `4000` / `20000` | Token-budgeted history trimming per provider class |
+| `GENERATION_TIMEOUT_SECONDS` | `120` | End-to-end generation timeout |
+| `DATABASE_URL` | compose-internal | asyncpg DSN |
+| `DEMO_USER_ID` | fixed UUID | Single-user demo identity |
 
-### 3. Ship 30 for 30 Atomic Essays
-- Powered by a dynamic runtime skill (`runtime-skills/ship-30-for-30/SKILL.md`).
-- Generates a single-thesis digital essay targeting **~1,250 words** (accepted first-draft range 1,150–1,350 per the skill contract) with a strong hook, varied rhythm, and grounded citations.
-- **Word-count gate:** essays outside the accepted range are rejected by the backend validator (`ESSAY_LENGTH_OUT_OF_RANGE`) rather than persisted. Local small models frequently undershoot the target; switch to a cloud provider for essay-length synthesis.
-
-### 4. Plate Viewer & Sandboxed HTML Preview
-- Switch mode to `Plate` to generate HTML/CSS deliverables (e.g. experiment one-pagers).
-- Rendered exclusively inside `<iframe sandbox="">` with **no** `allow-scripts`, `allow-same-origin`, `allow-forms`, or `allow-popups`.
-- Enforces strict Content Security Policy (CSP):
-  `default-src 'none'; img-src data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'`.
-- Includes live toggle between **Preview** and **Source Code**, plus one-click **Copy** and **Download**.
-
-### 5. Insufficient Evidence Detection
-- If a question outruns the podcast archive (e.g., specific quantitative SaaS conversion averages across the entire industry), the system does not invent figures.
-- Displays a dedicated *"Not in the archive"* notice explaining the corpus limitation and suggesting actionable alternative queries.
+Secrets are server-side only. The browser sends provider enums and allowlisted model IDs — never keys, never base URLs.
 
 ---
 
-## 4. Engineering Quality Gates & Verification
+# API
 
-Quality gates re-verified during the 2026-10-10 hardening audit (real commands, real containers):
+```text
+GET    /api/v1/health/live                  liveness
+GET    /api/v1/health/ready                 DB + migrations + Ollama + gateway status
+GET    /api/v1/config                       UI-safe configuration (no secrets)
+GET    /api/v1/providers                    live provider availability
+
+POST   /api/v1/sessions                     create dossier
+GET    /api/v1/sessions                     list (newest activity first)
+GET    /api/v1/sessions/{id}                metadata
+PATCH  /api/v1/sessions/{id}                rename
+DELETE /api/v1/sessions/{id}                delete + cascade
+GET    /api/v1/sessions/{id}/messages       chronological history + resolved citations
+POST   /api/v1/sessions/{id}/messages       submit turn (SSE stream, or stream=false)
+
+GET    /api/v1/growth-briefs/{id}           read brief
+PATCH  /api/v1/growth-briefs/{id}           edit (expected_version required → 409 on conflict)
+
+GET    /api/v1/artifacts/{id}               read plate (content + sanitized preview)
+PATCH  /api/v1/artifacts/{id}               edit (optimistic version check)
+
+GET    /api/v1/sources/{id}                 episode metadata
+GET    /api/v1/chunks/{id}                  exact stored passage
+GET    /api/v1/ingestion/status             corpus statistics
+```
+
+Every mutation enforces session ownership server-side. Errors use one envelope:
+
+```json
+{ "error": { "code": "MODEL_OUTPUT_INVALID", "message": "…", "retryable": true, "request_id": "…" } }
+```
+
+Codes include `VALIDATION_ERROR`, `NOT_FOUND`, `MODEL_NOT_ALLOWED`, `AGENT_UNAVAILABLE`, `GENERATION_TIMEOUT`, `ESSAY_LENGTH_OUT_OF_RANGE`, `MODEL_OUTPUT_INVALID`, `GENERATION_FAILED`, and `CANCELLED`. Raw exception text never crosses the API boundary — full detail stays in server logs under the same `request_id`.
+
+---
+
+# Testing & Quality
 
 ```powershell
 # 1. Lint checks (Ruff, incl. format check)
@@ -174,98 +554,40 @@ python -m mypy backend tests
 
 # 3. Frontend production build (TypeScript + Vite)
 npm run build --prefix frontend
-# Output: built in 2.16s with 0 errors
+# Output: tsc && vite build completed with exit code 0
 
-# 4. Full test suite (Pytest)
-python -m pytest
-# Output: 125 passed in 27.72s (integration suite additionally: 7 passed live)
+# 4. Frontend unit & component test suite (Vitest)
+npm test --prefix frontend
+# Output: 103 passed across 11 test suites in 3.64s
 
-# 5. Gateway type check (inside the Node 22 container)
+# 5. Full backend unit test suite (Pytest)
+python -m pytest tests/unit/ -m "not integration"
+# Output: 176 passed in 9.55s
+
+# 6. Gateway type check (inside the Node 22 container)
 docker compose run --rm --no-deps agent-gateway npx tsc --noEmit
 # Output: clean exit, no type errors
 ```
 
-Live end-to-end rehearsal evidence (2026-10-10, real stack, real models):
-- **Local mode:** grounded research answer generated by host Ollama `qwen2.5:1.5b` through the full pipeline with a validated citation (verbatim chunk excerpt from PostgreSQL + canonical episode URL).
-- **Cloud mode:** grounded answer via Google `gemini-3.5-flash-lite` (model availability verified against the live Generative Language API).
-- **Abstention:** an out-of-corpus benchmark question returned `insufficient_evidence: true` with **zero** gateway generation calls (verified via gateway logs).
-- **Ingestion idempotency:** second `index` run: `discovered 303, skipped 303, created 0, failed 0` in 2.65s.
-- **Contract gates:** bogus `model_id` → 422; null byte in content → 422; `artifact_format` mismatch → 422; session rename `PATCH` → 200.
+* **Backend** — units for the validator (including repair reasons and essay gates), citation reconciliation, JSON extractor adversarial cases (nested fences, reasoning tags), retrieval fusion, ingestion idempotency, API contracts, SSE heartbeat, Wave-B transaction/locking regressions; opt-in live integration tests against real Ollama and the gateway.
+* **Frontend** — citation segmentation, motion helpers (interruption/reversal, reduced motion), mermaid security, focus traps, markdown rendering, artifacts dock (progressive disclosure and colophon collision clearance), leader lines non-ratcheting geometry, signature moments.
+* **Evaluation** — the 20-case retrieval benchmark with fixture-integrity checks.
+* **Security** — sanitizer payload tests (`<script>`, `onerror`, `javascript:`, external CSS/img, forms, iframes, meta refresh).
 
-Detailed verification transcripts are preserved in [`agent-transcripts/`](file:///e:/Drizzle/Oogway/agent-transcripts/) (see especially `010-phase-3-audit-remediation.md`).
+Every phase of this repository was built behind verification gates: `agent-transcripts/` contains the evidence logs — commands run, exit codes, test output, failed attempts, and corrections. Claims of "passed" in this repo come with the run that proves them.
 
 ---
 
-## 5. Repository Layout
+# Observability & Resilience
 
-```
-.
-├── agent-gateway/           # Pi Agent Gateway (Node.js 22 container + @earendil-works/pi-ai)
-├── agent-transcripts/       # Genuine empirical verification evidence & audit logs
-├── backend/
-│   ├── app/
-│   │   ├── agent_client/    # Prompts, gateway client, validator, skill loader
-│   │   ├── api/v1/          # FastAPI routers (/sessions, /sources, /briefs, /artifacts, /providers)
-│   │   ├── core/            # Settings, JSON extractor, logging
-│   │   ├── db/              # SQLAlchemy async session & engine
-│   │   ├── ingestion/       # Parser, chunker, syncer, indexer, CLI
-│   │   ├── models/          # SQLAlchemy ORM entities & constraints
-│   │   ├── retrieval/       # Hybrid search (pgvector + tsvector), RRF fusion, embedder
-│   │   ├── security/        # nh3 HTML sanitizer & CSP builder
-│   │   └── services/        # Session, Conversation, Growth Brief, Artifact services
-│   └── migrations/          # Alembic database migrations
-├── docs/
-│   ├── architecture.md      # Dual-service architecture, ERD, and failure modes
-│   ├── design.md            # Editorial Research Studio design tokens & layout
-│   ├── manual-test-plan.md  # Step-by-step evaluator testing guide
-│   ├── PRD.md               # Product Requirements Document & traceability matrix
-│   └── evaluation/          # 20-case retrieval benchmark fixtures
-├── frontend/                # Editorial Research Studio (React 18 + TypeScript + Vite)
-├── runtime-skills/          # Modular agent skills (ship-30-for-30)
-├── docker-compose.yml       # Production Compose topology
-└── pytest.ini               # Pytest configuration
-```
+* Structured JSON logs (`JsonLogFormatter`) with request/correlation IDs propagated API → gateway.
+* Logging policy: counts, IDs, provider/model, durations, statuses — **never** prompt bodies, transcript text, or secrets.
+* Stage-level SSE telemetry doubles as user-facing honesty ("consulting the archive", "verifying citations" map 1:1 to real pipeline stages).
+* Readiness probe reports database/migration state plus per-component provider health without blocking startup.
+* Retrieval provenance (fused scores, ranks) is stored per message and surfaced in the UI.
 
----
+### Resilience & Graceful Degradation Matrix
 
-## 6. Trade-offs & Known Boundaries
-
-1. **Local Model Capacity vs. Latency:**
-   - Defaulting to `qwen2.5:1.5b` ensures the application runs smoothly on any laptop with $\ge 4\text{ GB}$ VRAM or CPU without crashing.
-   - For complex multi-section reasoning or nuanced synthesis, switching to Google Gemini or Claude via the Running Head yields superior prose fluency.
-2. **HTML Sandbox Restrictions:**
-   - The preview iframe enforces `sandbox=""` and `script-src 'none'`. This deliberately prevents interactive JavaScript execution (charts, calculators) in v1 to ensure strict zero-XSS safety. Visual deliverables rely entirely on responsive HTML and scoped inline CSS.
-3. **Single-User Demo Scope:**
-   - The system is configured for local evaluation with a seeded demo user (`DEMO_USER_ID`). Enterprise multi-tenant authentication and team workspaces are planned for v2.
-
----
-
-## 7. Forward Deployed Engineer (FDE) Operational Handoff Guide
-
-This system is engineered for zero-friction handoff to another engineering team to operate, test, troubleshoot, and extend.
-
-### 7.1 One-Command Startup
-- **Windows:** Run `.\start.ps1` (or `start.bat`).
-- **macOS / Linux / CI:** Run `./start.sh` (or `make up` / `make demo`).
-- The script checks host Docker and Ollama availability, pulls missing local models with real download feedback, copies `.env.example` with cryptographically secure tokens, starts Compose services, runs Alembic migrations, verifies knowledge base indexing, probes API readiness, and opens the studio UI.
-
-### 7.2 Configuration & Secret Management
-- **Safe Defaults:** [`.env.example`](file:///e:/Drizzle/Oogway/.env.example) contains safe local defaults pointing to internal container network names and host Ollama.
-- **Zero Committed Secrets:** `.env` is strictly `.gitignore`'d. Provider API keys (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) stay server-side inside `agent-gateway` and are never embedded into frontend bundles or client responses.
-- **Internal Service Authentication:** Communication between the FastAPI application core and the internal Node.js Agent Gateway is secured via a shared bearer token (`INTERNAL_SERVICE_TOKEN`).
-
-### 7.3 Observability & Structured Diagnostics
-- **Structured JSON Logging:** FastAPI emits machine-readable JSON logs via [`JsonLogFormatter`](file:///e:/Drizzle/Oogway/backend/app/main.py) with correlation IDs (`x-request-id`, `x-correlation-id`), duration in milliseconds, HTTP method/path, and status code.
-- **Retrieval & Latency Metadata:** Assistant messages store detailed retrieval metrics in `metadata_`:
-  - `evidence_rrf_scores`: Exact Reciprocal-Rank Fusion score for each retrieved candidate.
-  - `gateway_latency_ms`: Generation latency in milliseconds from the Pi agent runtime.
-  - `token_usage`: Prompt, completion, and total tokens reported by the model.
-- **Live Health Diagnostics:**
-  - `GET /api/v1/health/live`: Process liveness check.
-  - `GET /api/v1/health/ready`: Deep dependency readiness check testing PostgreSQL connection, host Ollama version, and internal Agent Gateway reachability.
-  - `GET /api/v1/ingestion/status`: Real-time knowledge base statistics (active sources, total indexed chunks, latest commit hash).
-
-### 7.4 Resilience & Graceful Degradation
 | Failure Scenario | How the System Handles It |
 |:---|:---|
 | **Missing Cloud API Key** | The router inspects configured keys before streaming; fails fast with safe 422 error and instructions to switch provider or configure key in `.env`. |
@@ -279,17 +601,69 @@ This system is engineered for zero-friction handoff to another engineering team 
 
 ---
 
-## 8. Knowledge Base & Transcript Persistence Lifecycle
+# Troubleshooting
 
-### How Ingested Transcripts Survive Across Restarts
-1. **Docker Named Volume Persistence:**
-   - PostgreSQL stores all cluster data in a dedicated named volume (`postgres_data:/var/lib/postgresql/data`).
-   - Named volumes exist independently of container lifecycles. Running `docker compose down`, rebuilding images, or restarting the Docker daemon does **not** erase the database. The 303 episodes and 16,964 chunks remain fully preserved on disk.
-2. **PostgreSQL Relational & Vector Storage:**
-   - Episode metadata is persisted in `transcript_sources` (`source_key`, `title`, `guest`, `episode_url`, `publish_date`, `content_hash`).
-   - Verbatim text and 768-dimensional vectors are stored in `transcript_chunks` with an HNSW cosine index (`vector_cosine_ops`) for sub-millisecond retrieval.
-3. **Idempotent Ingestion & Soft-Delete Citation Protection:**
-   - When running `python -m backend.app.ingestion.cli index`, files are checked against stored MD5 `content_hash` values. Unchanged episodes are skipped in milliseconds.
-   - If an episode's transcript is modified upstream, existing chunks are **soft-deactivated** (`is_active = FALSE`) instead of cascade-deleted. This guarantees that historical chat messages and saved Growth Briefs citing those chunks **never break** and continue to render their verbatim excerpts in margin sidenotes.
-4. **Local Transcript Cache:**
-   - Raw upstream transcripts are mirrored in `transcripts-cache/` on disk, allowing offline re-indexing without re-downloading from GitHub.
+| Symptom | Cause | Fix |
+|---|---|---|
+| Gateway returns 503 `internal_token_not_configured` | `INTERNAL_SERVICE_TOKEN` unset | Set it in `.env` (both services read it) and restart |
+| `MODEL_NOT_ALLOWED` on local | Host Ollama model ≠ `OLLAMA_CHAT_MODEL` | `ollama pull qwen2.5:1.5b` or set `OLLAMA_CHAT_MODEL` to an installed model |
+| Anthropic 404 `model_not_found` | Non-catalog model ID | Use `claude-sonnet-5` (see `.env.example` note) |
+| Ollama unreachable from containers | Host networking | Compose maps `host.docker.internal` via `host-gateway`; verify `ollama serve` is running |
+| `ESSAY_LENGTH_OUT_OF_RANGE` repeatedly | Local model too small for the essay contract | Switch to a cloud provider or larger local model; or set an explicit word target |
+| Answers cite nothing / "Not in the archive" | Corpus not ingested | `make ingest`, then `make ingest-check` for counts |
+| Embedding dimension error | Wrong embedding model | `ollama pull embeddinggemma` (768-d); changing models requires `make reindex` |
+| Port conflicts | 5173/8000 busy | Adjust `APP_BASE_URL`/ports in `.env`, or `make down` stale stacks |
+| Browser shows old bundle on refresh | Stale browser cache | Hard-refresh with `Ctrl+Shift+R` (Nginx now sends `no-store, no-cache, must-revalidate` on `index.html`) |
+
+---
+
+# Limitations & Roadmap
+
+Honest boundaries of v1, by design:
+
+* **Single-user demo identity** — ownership is enforced per session, but authentication is a documented stub (`DEMO_USER_ID`); multi-user auth is future work.
+* **Stage-level streaming** — SSE streams pipeline stages and the heartbeat, not token deltas; the answer arrives whole.
+* **Strike semantics** — cancelling a run discards the result and persists nothing; the provider-side call itself completes.
+* **Cloud keys are environment-configured** — an in-app credential manager (named key profiles, activation, live verification, dynamic model discovery) is fully designed but intentionally deferred beyond v1.
+* **No dark mode** — the paper metaphor is light-first; a "roast aubergine" token set is specified in the design research for v2.
+* **Local small-model ceiling** — the 1.5B default demonstrates the offline path; essays and dense synthesis want a mid-tier model or cloud provider.
+
+---
+
+# Documentation Map
+
+| Document | What it covers |
+|---|---|
+| `docs/PRD.md` | Discovery brief, personas, success metrics, assumptions, scope, risk register, traceability matrix |
+| `docs/architecture.md` | Schema, endpoints, component boundaries, flows, deployment topology |
+| `docs/design.md` | Design system: tokens, IA, interaction states, responsive + accessibility |
+| `IMPLEMENTATION_SPEC.md` | The canonical build specification this repo implements |
+| `docs/manual-test-plan.md` | UI test plan for humans |
+| `docs/ADRs/` | Architecture decision records (agent runtime choice) |
+| `docs/evaluation/retrieval_cases.yaml` | The 20-case retrieval fixture |
+| `uiux-research/` | Design research ("Bone & Aubergine") + HTML prototypes |
+| `agent-transcripts/` | Phase-by-phase evidence logs, including failures and corrections |
+| `AGENTS.md` · `.agents/` | Repo rules and verification gates for coding agents |
+| `START_HERE.md` | Specification-first onboarding |
+
+---
+
+# Project Status
+
+Kestrel is a complete, deployable forward-deployment build: ingest → retrieve → ground → generate → validate → persist → render, with the security posture, observability, and handoff documentation another team would need to operate it.
+
+It is explicit about what it does not claim: retrieval targets are gates rather than trophies, provider paths are labeled with what has and has not been live-verified, and every "passed" in the transcripts has a command behind it.
+
+The product thesis it defends on every turn: **an assistant that shows its evidence is more useful than one that sounds confident.**
+
+---
+
+<div align="center">
+
+**Kestrel — The Lenny Growth Assistant**
+
+Evidence-first growth research · Bone & Aubergine
+
+<a href="https://github.com/imshreyaskn/kestrel">GitHub</a> · <a href="https://github.com/imshreyaskn/kestrel/blob/main/docs/PRD.md">PRD</a> · <a href="https://github.com/imshreyaskn/kestrel/blob/main/docs/architecture.md">Architecture</a> · <a href="https://github.com/imshreyaskn/kestrel/blob/main/START_HERE.md">Start Here</a>
+
+</div>
