@@ -15,7 +15,7 @@ import {
 import { ApiError, api, isUuid } from './lib/api';
 import { buildAnswerData, buildCitations, entriesFromHistory, modeToLabel } from './lib/citeInline';
 import { prefersReducedMotion, strikeCard, shakeConflict } from './lib/motion';
-import { TOUR_ARTIFACTS, TOUR_BRIEF, TOUR_SESSIONS } from './lib/demoData';
+import { TOUR_ARTIFACTS, TOUR_BRIEF } from './lib/demoData';
 import { RunningHead } from './components/RunningHead';
 import { IndexRail } from './components/IndexRail';
 import { Frontmatter } from './components/Frontmatter';
