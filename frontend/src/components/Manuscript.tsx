@@ -66,8 +66,9 @@ const RichText: React.FC<{ text: string; citations?: Citation[] }> = ({ text, ci
 
 /** Minimal inline markdown: **bold** and *emphasis* only, as safe React nodes. */
 function renderEmphasis(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
-  if (parts.length === 1) return text;
+  const sanitized = text.replace(/^\*\*\s*|\s*\*\*$/g, '');
+  const parts = sanitized.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g);
+  if (parts.length === 1) return sanitized;
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return <strong key={i}>{part.slice(2, -2)}</strong>;
@@ -75,7 +76,7 @@ function renderEmphasis(text: string): React.ReactNode {
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
       return <em key={i}>{part.slice(1, -1)}</em>;
     }
-    return part;
+    return part.replace(/^\*\*\s*|\s*\*\*$/g, '');
   });
 }
 

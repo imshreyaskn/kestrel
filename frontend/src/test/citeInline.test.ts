@@ -222,6 +222,53 @@ Third paragraph is another point.`;
     expect(answer.sections[0].paragraphs[0]).toBe('Second paragraph is a separate body block.');
     expect(answer.sections[0].paragraphs[1]).toBe('Third paragraph is another point.');
   });
+
+  it('correctly normalizes Gemini malformed headings and cleans dangling paragraph asterisks', () => {
+    const rawGeminiOutput = `Building on [E1], here is how top-of-funnel and retention work together:
+
+I**Layered Acquisition Channels
+** Relying on a single acquisition channel creates a leaky bucket if retention fails [E1]. Instagram utilized multi-layered loops [E1].
+
+II**The Connection Pivot (Early Retention)
+** Early growth tactics often over-index on celebrity reach [E2]. Ensuring new users connect with friends right away changes retention [E2].
+
+III**Frictionless Account Access
+** Growth is heavily bottlenecked by preventable churn [E3].`;
+
+    const answer = buildAnswerData(rawGeminiOutput, 'gemini stamp');
+    expect(answer.lead).toContain('Building on [E1], here is how top-of-funnel and retention work together:');
+    expect(answer.sections).toHaveLength(3);
+
+    expect(answer.sections[0].rn).toBe('I');
+    expect(answer.sections[0].h).toBe('Layered Acquisition Channels');
+    expect(answer.sections[0].paragraphs[0]).toBe(
+      'Relying on a single acquisition channel creates a leaky bucket if retention fails [E1]. Instagram utilized multi-layered loops [E1].'
+    );
+
+    expect(answer.sections[1].rn).toBe('II');
+    expect(answer.sections[1].h).toBe('The Connection Pivot (Early Retention)');
+    expect(answer.sections[1].paragraphs[0]).toBe(
+      'Early growth tactics often over-index on celebrity reach [E2]. Ensuring new users connect with friends right away changes retention [E2].'
+    );
+
+    expect(answer.sections[2].rn).toBe('III');
+    expect(answer.sections[2].h).toBe('Frictionless Account Access');
+    expect(answer.sections[2].paragraphs[0]).toBe(
+      'Growth is heavily bottlenecked by preventable churn [E3].'
+    );
+  });
+
+  it('preserves legitimate inline bold formatting within paragraphs', () => {
+    const text = `Lead overview here.
+
+1. First Strategy
+This paragraph includes **valid bold text** and regular text [E1].`;
+
+    const answer = buildAnswerData(text, 'stamp');
+    expect(answer.sections[0].paragraphs[0]).toBe(
+      'This paragraph includes **valid bold text** and regular text [E1].'
+    );
+  });
 });
 
 describe('entriesFromHistory', () => {
