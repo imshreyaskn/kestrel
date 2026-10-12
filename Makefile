@@ -27,11 +27,11 @@ dev-expose:
 	$(DOCKER_COMPOSE) -f docker-compose.yml -f compose.dev.yml up -d
 	@echo "Services running with debug ports (db on 5433, gateway on 127.0.0.1:8010)."
 
+up: demo
+
 demo:
-	$(DOCKER_COMPOSE) up -d
-	@echo "All services running at http://localhost:5173"
-	@echo "Note: first boot applies Alembic migrations automatically inside the api container."
-	@echo "Run 'make ingest' to load the transcript knowledge base."
+	@chmod +x ./start.sh 2>/dev/null || true
+	@./start.sh
 
 migrate:
 	$(DOCKER_COMPOSE) exec api alembic -c /app/alembic.ini upgrade head

@@ -39,7 +39,7 @@ describe('ArtifactsDock (Right-Side Deliverables Shelf)', () => {
     impression: 'Plate 1 · MD',
   };
 
-  it('renders empty-state message when there are no brief and no artifacts', () => {
+  it('hides completely (returns null) when there are no brief and no artifacts', () => {
     const html = renderToStaticMarkup(
       <ArtifactsDock
         activeBrief={null}
@@ -48,10 +48,7 @@ describe('ArtifactsDock (Right-Side Deliverables Shelf)', () => {
         onExaminePlate={vi.fn()}
       />
     );
-    // Dock is always present — shows empty-state text instead of returning null.
-    expect(html).toContain('class="artifacts-dock"');
-    expect(html).toContain('No deliverables bound yet');
-    expect(html).toContain('art-dock-count">0</span>');
+    expect(html).toBe('');
   });
 
   it('renders right-side deliverables dock with Growth Brief and Artifact items', () => {
@@ -86,5 +83,19 @@ describe('ArtifactsDock (Right-Side Deliverables Shelf)', () => {
     );
 
     expect(html).toContain('✳');
+  });
+
+  it('adds pushed-down class when isColophonOpen is true to prevent overlapping the Colophon modal', () => {
+    const html = renderToStaticMarkup(
+      <ArtifactsDock
+        activeBrief={dummyBrief}
+        artifacts={[dummyArtifact]}
+        onOpenBrief={vi.fn()}
+        onExaminePlate={vi.fn()}
+        isColophonOpen={true}
+      />
+    );
+
+    expect(html).toContain('class="artifacts-dock pushed-down"');
   });
 });

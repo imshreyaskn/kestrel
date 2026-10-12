@@ -592,7 +592,7 @@ html::-webkit-scrollbar-thumb:hover {
   top: 48px;
   right: 14px;
   width: min(340px, calc(100vw - 28px));
-  z-index: 300;
+  z-index: 950;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 0;
@@ -2468,7 +2468,13 @@ html::-webkit-scrollbar-thumb:hover {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-page);
   border-radius: 0;
-  transition: transform var(--dur-normal) var(--ease-out-expo), opacity var(--dur-normal);
+  transition: top var(--dur-normal) var(--ease-out-expo),
+              transform var(--dur-normal) var(--ease-out-expo),
+              opacity var(--dur-normal);
+}
+.artifacts-dock.pushed-down {
+  top: 310px;
+  max-height: calc(100vh - 330px);
 }
 .artifacts-dock.collapsed {
   width: auto;
@@ -2597,7 +2603,8 @@ html::-webkit-scrollbar-thumb:hover {
   text-align: center;
 }
 @media (max-width: 1120px) {
-  .artifacts-dock {
+  .artifacts-dock,
+  .artifacts-dock.pushed-down {
     top: auto;
     bottom: 84px;
     right: 14px;

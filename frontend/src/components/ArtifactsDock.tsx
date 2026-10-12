@@ -6,6 +6,7 @@ interface ArtifactsDockProps {
   artifacts: ArtifactData[];
   onOpenBrief: () => void;
   onExaminePlate: (artId: string, originRect?: DOMRect) => void;
+  isColophonOpen?: boolean;
 }
 
 export const ArtifactsDock: React.FC<ArtifactsDockProps> = ({
@@ -13,14 +14,22 @@ export const ArtifactsDock: React.FC<ArtifactsDockProps> = ({
   artifacts,
   onOpenBrief,
   onExaminePlate,
+  isColophonOpen = false,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const totalCount = (activeBrief ? 1 : 0) + artifacts.length;
 
+  if (totalCount === 0) {
+    return null;
+  }
+
   if (isCollapsed) {
     return (
-      <div className="artifacts-dock collapsed" aria-label="Folio deliverables dock">
+      <div
+        className={`artifacts-dock collapsed${isColophonOpen ? ' pushed-down' : ''}`}
+        aria-label="Folio deliverables dock"
+      >
         <button
           type="button"
           className="art-dock-collapsed-btn"
@@ -36,7 +45,10 @@ export const ArtifactsDock: React.FC<ArtifactsDockProps> = ({
   }
 
   return (
-    <aside className="artifacts-dock" aria-label="Folio deliverables dock">
+    <aside
+      className={`artifacts-dock${isColophonOpen ? ' pushed-down' : ''}`}
+      aria-label="Folio deliverables dock"
+    >
       <header className="art-dock-header">
         <div className="art-dock-title">
           <span style={{ color: 'var(--accent)' }} aria-hidden="true">✳</span>

@@ -10,6 +10,8 @@ interface RunningHeadProps {
   providers: ProviderConfig[];
   onOpenMobileMenu: () => void;
   isComposing?: boolean;
+  isColophonOpen?: boolean;
+  onColophonOpenChange?: (open: boolean) => void;
 }
 
 export const RunningHead: React.FC<RunningHeadProps> = ({
@@ -21,11 +23,20 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
   providers,
   onOpenMobileMenu,
   isComposing = false,
+  isColophonOpen: propIsColophonOpen,
+  onColophonOpenChange,
 }) => {
   const MAX_TITLE_LENGTH = 60;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [charCount, setCharCount] = useState(0);
-  const [isColophonOpen, setIsColophonOpen] = useState(false);
+  const [localIsColophonOpen, setLocalIsColophonOpen] = useState(false);
+  const isColophonOpen = propIsColophonOpen !== undefined ? propIsColophonOpen : localIsColophonOpen;
+  const setColophonOpen = (open: boolean) => {
+    if (onColophonOpenChange) {
+      onColophonOpenChange(open);
+    }
+    setLocalIsColophonOpen(open);
+  };
   const colophonRef = useRef<HTMLDivElement>(null);
   const spanRef = useRef<HTMLSpanElement>(null);
 
@@ -53,7 +64,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
         colophonRef.current &&
         !colophonRef.current.contains(e.target as Node)
       ) {
-        setIsColophonOpen(false);
+        setColophonOpen(false);
       }
     };
     document.addEventListener('click', handleOutsideClick);
@@ -205,7 +216,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
           aria-expanded={isColophonOpen}
           onClick={(e) => {
             e.stopPropagation();
-            setIsColophonOpen(!isColophonOpen);
+            setColophonOpen(!isColophonOpen);
           }}
         >
           <svg
@@ -242,7 +253,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
                 display: 'grid',
                 placeItems: 'center',
               }}
-              onClick={() => setIsColophonOpen(false)}
+              onClick={() => setColophonOpen(false)}
             >
               <svg className="icon ic12" aria-hidden="true" viewBox="0 0 24 24">
                 <path d="M18 6 6 18M6 6l12 12" />
@@ -259,7 +270,7 @@ export const RunningHead: React.FC<RunningHeadProps> = ({
                 data-prov={p.id}
                 onClick={() => {
                   onProviderChange(p.id);
-                  setIsColophonOpen(false);
+                  setColophonOpen(false);
                 }}
               >
                 <span

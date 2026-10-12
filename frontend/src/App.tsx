@@ -73,6 +73,7 @@ export const App: React.FC = () => {
   const [isPlateOpen, setIsPlateOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
   const [plateOriginRect, setPlateOriginRect] = useState<DOMRect | null>(null);
+  const [isColophonOpen, setIsColophonOpen] = useState(false);
 
   // Composing Run State
   const [isComposing, setIsComposing] = useState(false);
@@ -901,7 +902,7 @@ export const App: React.FC = () => {
           break;
 
         case 'colophon':
-          document.getElementById('coloBtn')?.click();
+          setIsColophonOpen(true);
           showToast('State: Colophon Provider Inspector');
           break;
       }
@@ -928,6 +929,8 @@ export const App: React.FC = () => {
         providers={providers}
         onOpenMobileMenu={() => setIsMobileRailOpen(true)}
         isComposing={isComposing}
+        isColophonOpen={isColophonOpen}
+        onColophonOpenChange={setIsColophonOpen}
       />
 
       {/* Book-spine Session Index Rail */}
@@ -953,6 +956,7 @@ export const App: React.FC = () => {
         ]}
         onOpenBrief={handleOpenBrief}
         onExaminePlate={handleExaminePlate}
+        isColophonOpen={isColophonOpen}
       />
 
       {/* Continuous Manuscript Sheet */}
