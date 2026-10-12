@@ -767,14 +767,14 @@ class ConversationService:
             # Preserve honest retrieval provenance: the RRF fused score is
             # recorded in message metadata rather than being mislabeled as a
             # semantic or keyword score in message_sources (spec §5.6).
-            assistant_message.metadata_ = {
+            meta_payload: dict[str, Any] = {
                 "evidence_rrf_scores": {
                     e.evidence_id: e.rrf_score for e in evidence_items
                 },
                 "gateway_latency_ms": gw_result.latency_ms,
             }
             if gw_result.usage:
-                assistant_message.metadata_["token_usage"] = gw_result.usage
+                meta_payload["token_usage"] = gw_result.usage
             if isinstance(validated, ValidatedEssayResponse):
                 skill_obj = default_skill_loader.load_skill("ship-30-for-30")
                 skill_ver = (
@@ -782,8 +782,10 @@ class ConversationService:
                     if skill_obj
                     else "ship-30-for-30@v1"
                 )
-                assistant_message.metadata_["skill"] = skill_ver
-                assistant_message.metadata_["writing_path"] = validated.writing_path
+                meta_payload["skill"] = skill_ver
+                meta_payload["writing_path"] = validated.writing_path
+
+            assistant_message.metadata_ = meta_payload
 
             # Persist message_sources join table records for validated citations.
             # retrieval_rank is the ordinal position in the final fused

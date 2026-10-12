@@ -41,7 +41,7 @@ class JsonLogFormatter(logging.Formatter):
             log_payload["exception"] = self.formatException(record.exc_info)
         if hasattr(record, "extra_fields") and isinstance(record.extra_fields, dict):
             log_payload.update(record.extra_fields)
-        return json.dumps(log_payload, ensure_ascii=False)
+        return json.dumps(log_payload, ensure_ascii=False, default=str)
 
 
 # Configure structured JSON logging
@@ -86,7 +86,13 @@ async def lifespan(app: FastAPI):
                 "Ollama embedding model verification returned False; local embedding may fail if Ollama is not running",
                 extra={"extra_fields": {"model": settings.OLLAMA_EMBEDDING_MODEL}},
             )
+            if settings.APP_ENV == "production":
+                raise RuntimeError(
+                    f"Ollama embedding model {settings.OLLAMA_EMBEDDING_MODEL} unavailable; failing fast in production (spec §7.4)"
+                )
     except Exception as exc:  # noqa: BLE001
+        if settings.APP_ENV == "production":
+            raise
         logger.warning(
             "Could not verify Ollama embedding availability on startup",
             extra={"extra_fields": {"error": str(exc)}},
