@@ -12,7 +12,7 @@ import logging
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -293,6 +293,8 @@ async def submit_message(
     session_id: uuid.UUID,
     payload: MessageRequest,
     request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ):
@@ -301,6 +303,8 @@ async def submit_message(
     Streams progress stages via text/event-stream SSE by default,
     or returns completed response JSON if stream=False.
     """
+    effective_idempotency_key = idempotency_key or x_idempotency_key
+
     # 1. Enforce session ownership
     session = await default_session_service.get_session(
         db=db, session_id=session_id, user_id=user_id
@@ -340,6 +344,8 @@ async def submit_message(
                 model_id=payload.model_id,
                 product_context=payload.product_context,
                 target_word_count=payload.target_word_count,
+                request_id=request.state.request_id,
+                idempotency_key=effective_idempotency_key,
             )
             return result
         except Exception as exc:
@@ -384,6 +390,7 @@ async def submit_message(
                     product_context=payload.product_context,
                     target_word_count=payload.target_word_count,
                     request_id=request.state.request_id,
+                    idempotency_key=effective_idempotency_key,
                 ):
                     await queue.put(event)
             except Exception as exc:  # noqa: BLE001

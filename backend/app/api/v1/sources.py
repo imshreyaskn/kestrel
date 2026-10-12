@@ -60,7 +60,17 @@ class IngestionStatusResponse(BaseModel):
     last_ingested_at: str | None = None
 
 
-@router.get("/sources/{source_id}", response_model=SourceResponse)
+@router.get(
+    "/sources/{source_id}",
+    response_model=SourceResponse,
+    summary="Get transcript source metadata",
+    description=(
+        "Retrieve canonical episode metadata and source URL for a specific transcript "
+        "source in the public knowledge base (IMPLEMENTATION_SPEC §5.1, §5.5). "
+        "Corpus access is read-only and requires no session context."
+    ),
+    response_description="Canonical metadata, episode URL, and chunk count for the requested source.",
+)
 async def get_source(source_id: uuid.UUID, db: DbSession) -> SourceResponse:
     """Retrieve canonical metadata and episode URL for a specific transcript source."""
     stmt = select(TranscriptSource).where(TranscriptSource.id == source_id)
@@ -95,7 +105,17 @@ async def get_source(source_id: uuid.UUID, db: DbSession) -> SourceResponse:
     )
 
 
-@router.get("/chunks/{chunk_id}", response_model=ChunkResponse)
+@router.get(
+    "/chunks/{chunk_id}",
+    response_model=ChunkResponse,
+    summary="Get transcript chunk text and evidence metadata",
+    description=(
+        "Retrieve exact stored chunk text and episode metadata for citation inspection "
+        "and provenance audit (IMPLEMENTATION_SPEC §5.5, §5.6). "
+        "Excerpts are resolved directly from stored content without LLM manipulation."
+    ),
+    response_description="Stored chunk content, character offsets, token count, and episode metadata.",
+)
 async def get_chunk(chunk_id: uuid.UUID, db: DbSession) -> ChunkResponse:
     """Retrieve exact stored chunk text and episode metadata for evidence inspection."""
     stmt = (
@@ -127,7 +147,16 @@ async def get_chunk(chunk_id: uuid.UUID, db: DbSession) -> ChunkResponse:
     )
 
 
-@router.get("/ingestion/status", response_model=IngestionStatusResponse)
+@router.get(
+    "/ingestion/status",
+    response_model=IngestionStatusResponse,
+    summary="Get transcript knowledge base status",
+    description=(
+        "Return aggregate knowledge base metrics including active transcript sources, "
+        "total indexed chunks, and latest ingestion commit hash (IMPLEMENTATION_SPEC §5.5)."
+    ),
+    response_description="Aggregate metrics on the active transcript corpus.",
+)
 async def get_ingestion_status(
     db: DbSession,
 ) -> IngestionStatusResponse:

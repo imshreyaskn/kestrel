@@ -2579,6 +2579,14 @@ html::-webkit-scrollbar-thumb:hover {
   color: var(--accent);
   border-color: var(--accent-line);
 }
+.art-dock-empty {
+  font: 400 11px/1.5 var(--f-text);
+  color: var(--muted-ink);
+  font-style: italic;
+  padding: 8px 6px;
+  margin: 0;
+  text-align: center;
+}
 @media (max-width: 1120px) {
   .artifacts-dock {
     top: auto;

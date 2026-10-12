@@ -268,6 +268,7 @@ class ConversationService:
         product_context: str | None = None,
         target_word_count: int | None = None,
         request_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute full conversation pipeline non-streaming.
@@ -285,6 +286,7 @@ class ConversationService:
             product_context=product_context,
             target_word_count=target_word_count,
             request_id=request_id,
+            idempotency_key=idempotency_key,
         ):
             if event["event"] == "completed":
                 final_result = event["data"]
@@ -403,6 +405,101 @@ class ConversationService:
                 }
                 return
 
+            # 1b. Check idempotency deduplication (BA15)
+            if idempotency_key:
+                existing_user_msg = (
+                    await SessionService.get_message_by_idempotency_key(
+                        db, session_id, idempotency_key
+                    )
+                )
+                if existing_user_msg:
+                    assistant_reply = (
+                        await SessionService.get_assistant_reply_for_user_message(
+                            db, session_id, existing_user_msg.seq
+                        )
+                    )
+                    if assistant_reply and assistant_reply.status == "complete":
+                        citation_payloads: list[dict[str, Any]] = []
+                        rrf_scores = (assistant_reply.metadata_ or {}).get(
+                            "evidence_rrf_scores", {}
+                        )
+                        for ms in assistant_reply.sources:
+                            chunk = ms.chunk
+                            source = chunk.source if chunk else None
+                            citation_payloads.append(
+                                {
+                                    "evidence_id": ms.evidence_id,
+                                    "source_id": str(chunk.source_id) if chunk else "",
+                                    "chunk_id": str(ms.chunk_id),
+                                    "guest": source.guest if source else None,
+                                    "episode_title": source.title
+                                    if source
+                                    else "Unknown Episode",
+                                    "episode_url": source.episode_url
+                                    if source
+                                    else None,
+                                    "publish_date": source.publish_date.isoformat()
+                                    if source and source.publish_date
+                                    else None,
+                                    "excerpt": chunk.content if chunk else "",
+                                    "supports": ms.supports,
+                                    "retrieval_rank": ms.retrieval_rank,
+                                    "rrf_score": rrf_scores.get(ms.evidence_id),
+                                }
+                            )
+
+                        yield {
+                            "event": "run_started",
+                            "data": {
+                                "run_id": run_id,
+                                "message_id": str(assistant_reply.id),
+                                "session_id": str(session_id),
+                            },
+                        }
+                        yield {
+                            "event": "completed",
+                            "data": {
+                                "message": {
+                                    "id": str(assistant_reply.id),
+                                    "session_id": str(session_id),
+                                    "role": "assistant",
+                                    "status": "complete",
+                                    "content": assistant_reply.content,
+                                    "mode": assistant_reply.workflow_mode,
+                                    "provider": assistant_reply.provider,
+                                    "model_id": assistant_reply.model_id,
+                                    "created_at": assistant_reply.created_at.isoformat(),
+                                    "completed_at": assistant_reply.completed_at.isoformat()
+                                    if assistant_reply.completed_at
+                                    else None,
+                                    "metadata": assistant_reply.metadata_ or {},
+                                },
+                                "citations": citation_payloads,
+                                "insufficient_evidence": False,
+                                "growth_brief_id": (
+                                    assistant_reply.metadata_ or {}
+                                ).get("growth_brief_id"),
+                                "artifact_id": (
+                                    assistant_reply.metadata_ or {}
+                                ).get("artifact_id"),
+                                "weak_evidence": False,
+                            },
+                        }
+                        return
+                    if assistant_reply and assistant_reply.status == "pending":
+                        yield {
+                            "event": "error",
+                            "data": {
+                                "error": {
+                                    "code": "REQUEST_IN_PROGRESS",
+                                    "message": "A message submission with this Idempotency-Key is currently in progress.",
+                                    "retryable": True,
+                                    "request_id": run_id,
+                                }
+                            },
+                        }
+                        return
+
             # 2. Persist user message. Ordering is now guaranteed by the
             # monotonic `seq` IDENTITY column (BA17) — no timestamp hack needed.
             user_message = Message(
@@ -457,7 +554,7 @@ class ConversationService:
                     Message.id != assistant_message.id,
                     Message.id != user_message.id,
                 )
-                .order_by(desc(Message.created_at))
+                .order_by(desc(Message.seq))
                 .limit(settings.MAX_CONTEXT_MESSAGES)
             )
             history_result = await db.execute(stmt)
