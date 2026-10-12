@@ -956,7 +956,7 @@ html::-webkit-scrollbar-thumb:hover {
 .frontmatter {
   min-height: calc(100vh - 190px);
   display: flex; flex-direction: column; justify-content: flex-start;
-  padding-top: clamp(28px, 4vh, 52px);
+  padding-top: clamp(52px, 7.5vh, 88px);
   padding-bottom: 160px;
 }
 .fm-mast {
