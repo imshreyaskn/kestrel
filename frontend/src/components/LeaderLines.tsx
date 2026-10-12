@@ -18,13 +18,14 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
 
     const sheet = sheetRef.current;
     const svg = svgRef.current;
-    const w = sheet.scrollWidth;
-    const h = sheet.scrollHeight;
 
-    svg.setAttribute('width', String(w));
-    svg.setAttribute('height', String(h));
-    svg.style.width = `${w}px`;
-    svg.style.height = `${h}px`;
+    // Use percentage dimensions and ensure no inline pixel styles inflate
+    // sheet.scrollHeight into an irreversible ratchet when switching sessions
+    // or collapsing marginalia notes.
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    if (svg.style.width) svg.style.removeProperty('width');
+    if (svg.style.height) svg.style.removeProperty('height');
 
     const sRect = sheet.getBoundingClientRect();
     const refs = Array.from(sheet.querySelectorAll<HTMLElement>('.sn-ref'));

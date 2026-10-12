@@ -590,7 +590,7 @@ export const App: React.FC = () => {
               showToast(`Entry bound — ${citations.length} citation${citations.length === 1 ? '' : 's'} verified`);
               setTimeout(() => {
                 window.scrollTo({
-                  top: document.body.scrollHeight,
+                  top: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
                   behavior: 'smooth',
                 });
               }, 100);
@@ -693,7 +693,10 @@ export const App: React.FC = () => {
         // Subsequent prompt inside active Manuscript: direct append, no full-page transition flash
         appendQueryEntry();
         setTimeout(() => {
-          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+          window.scrollTo({
+            top: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+            behavior: 'smooth',
+          });
         }, 100);
       }
 

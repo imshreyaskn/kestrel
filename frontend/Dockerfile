@@ -1,11 +1,11 @@
 # Multi-stage Dockerfile for Kestrel Editorial Research Studio Frontend
 # Stage 1: Build
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install --ignore-scripts --registry=https://registry.npmmirror.com
 
 COPY . .
 RUN npm run build
