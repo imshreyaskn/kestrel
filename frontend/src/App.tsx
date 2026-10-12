@@ -25,7 +25,6 @@ import { GrowthBriefModal } from './components/GrowthBriefModal';
 import { PlateViewerModal } from './components/PlateViewerModal';
 import { LeaderLines } from './components/LeaderLines';
 import { Toasts } from './components/Toasts';
-import { StatesTray, StateKey } from './components/StatesTray';
 import { ArtifactsDock } from './components/ArtifactsDock';
 
 const COMPOSING_STAGES: Record<ComposeMode, Array<[string, string]>> = {
@@ -810,106 +809,6 @@ export const App: React.FC = () => {
     [sessions, showToast]
   );
 
-  // ---------------------------------------------------------------
-  // Design-tour state tray. Tour sessions are injected locally and
-  // clearly marked; 'insufficient' and 'composing' run REAL queries
-  // against PostgreSQL so the states are inspected live.
-  // ---------------------------------------------------------------
-  const ensureTourSession = useCallback((key: keyof typeof TOUR_SESSIONS) => {
-    setSessions((prev) => {
-      if (prev.some((s) => s.id === key)) return prev;
-      return [TOUR_SESSIONS[key], ...prev];
-    });
-  }, []);
-
-  const handleSelectState = useCallback(
-    (stateKey: StateKey) => {
-      setIsBriefOpen(false);
-      setIsPlateOpen(false);
-
-      switch (stateKey) {
-        case 'hero':
-          handleNewDossier();
-          showToast('State: Frontmatter (New Dossier)');
-          break;
-
-        case 'activation':
-          ensureTourSession('live-act');
-          setActiveSessionId('live-act');
-          setView('manuscript');
-          showToast('State: Research Folio — design tour · not persisted');
-          break;
-
-        case 'pricing': {
-          ensureTourSession('pricing');
-          setActiveSessionId('pricing');
-          setView('manuscript');
-          showToast('State: Pricing Folio — design tour · not persisted');
-          break;
-        }
-
-        case 'brief':
-          setActiveBrief(TOUR_BRIEF);
-          setIsBriefOpen(true);
-          showToast('State: Growth Brief (The Fold) — design tour');
-          break;
-
-        case 'plate-html':
-          setActiveArtifact(TOUR_ARTIFACTS.a1);
-          setIsPlateOpen(true);
-          showToast('State: Sandboxed HTML Plate — design tour');
-          break;
-
-        case 'plate-md':
-          setActiveArtifact(TOUR_ARTIFACTS.a2);
-          setIsPlateOpen(true);
-          showToast('State: Sandboxed Markdown Plate — design tour');
-          break;
-
-        case 'insufficient':
-          if (isComposing) {
-            showToast('Composing — strike the run first');
-            break;
-          }
-          setView('frontmatter');
-          handleSubmitQuery(
-            'What’s a good benchmark conversion rate for product-led growth companies?',
-            'research',
-            'markdown'
-          );
-          showToast('State: Insufficient Evidence — real run against the archive');
-          break;
-
-        case 'composing':
-          if (isComposing) {
-            showToast('A run is already composing');
-            break;
-          }
-          setView('frontmatter');
-          handleSubmitQuery(
-            'How does Superhuman measure product-market fit delight?',
-            'research',
-            'markdown'
-          );
-          showToast('State: Composing 4-Stage Step List — real run');
-          break;
-
-        case 'empty':
-          ensureTourSession('empty1');
-          setActiveSessionId('empty1');
-          setView('manuscript');
-          showToast('State: Blank Folio — design tour · not persisted');
-          break;
-
-        case 'colophon':
-          setIsColophonOpen(true);
-          showToast('State: Colophon Provider Inspector');
-          break;
-      }
-    },
-    [ensureTourSession, handleNewDossier, handleSubmitQuery, isComposing, showToast]
-  );
-
   const composingStamp = `${providers.find((p) => p.id === activeProvider)?.model || activeProvider} · ${activeProvider} — nothing is bound until citations pass`;
 
   return (
@@ -1055,8 +954,6 @@ export const App: React.FC = () => {
         onCopySuccess={showToast}
       />
 
-      {/* Floating State Reviewer Tray */}
-      <StatesTray onSelectState={handleSelectState} />
 
       {/* Printed Slip Notifications */}
       <Toasts toasts={toasts} />

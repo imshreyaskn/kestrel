@@ -331,6 +331,23 @@ app.post("/api/v1/generate", authenticateInternal, async (req: Request, res: Res
       completeOptions as never
     );
 
+    if (assistantResult.stopReason === "error") {
+      let errDetail = assistantResult.errorMessage || "Provider returned an error";
+      try {
+        const parsed = JSON.parse(errDetail);
+        if (parsed.error?.message) {
+          errDetail = parsed.error.message;
+          const innerParsed = JSON.parse(errDetail);
+          if (innerParsed.error?.message) errDetail = innerParsed.error.message;
+        }
+      } catch {}
+      return res.status(502).json({
+        error: "provider_error",
+        message: `Upstream provider error (${targetModel.id}): ${errDetail}`,
+        latency_ms: Date.now() - startTime,
+      });
+    }
+
     // Extract text content from Pi Assistant message
     const rawContent = assistantResult.content
       .filter((c): c is { type: "text"; text: string } => c.type === "text")
