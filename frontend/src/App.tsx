@@ -589,6 +589,7 @@ export const App: React.FC = () => {
   const handleSubmitQuery = useCallback(
     async (text: string, mode: ComposeMode, format: ArtifactKind, productContext?: string) => {
       lastRunRef.current = { text, mode, format };
+      setActiveMode(mode);
       let currentSession = activeSession;
       const isInitialSwitch = view === 'frontmatter' || !currentSession;
 
@@ -636,21 +637,16 @@ export const App: React.FC = () => {
           (document as any).startViewTransition(() => {
             setView('manuscript');
             appendQueryEntry();
+            window.scrollTo({ top: 0, behavior: 'instant' });
           });
         } else {
           setView('manuscript');
           appendQueryEntry();
+          window.scrollTo({ top: 0, behavior: 'instant' });
         }
-        window.scrollTo({ top: 0, behavior: 'instant' });
       } else {
-        // Subsequent prompt inside active Manuscript
-        if ('startViewTransition' in document && !prefersReducedMotion()) {
-          (document as any).startViewTransition(() => {
-            appendQueryEntry();
-          });
-        } else {
-          appendQueryEntry();
-        }
+        // Subsequent prompt inside active Manuscript: direct append, no full-page transition flash
+        appendQueryEntry();
         setTimeout(() => {
           window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }, 100);
@@ -891,9 +887,6 @@ export const App: React.FC = () => {
                 setActiveMode(m);
                 if (prefill) {
                   handleSubmitQuery(prefill, m, 'markdown');
-                } else {
-                  const ta = document.querySelector<HTMLTextAreaElement>('#fmTa');
-                  if (ta) ta.focus();
                 }
               }}
             />

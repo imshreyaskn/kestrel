@@ -254,7 +254,7 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                     <SideNote
                       key={cit.id}
                       citation={cit}
-                      defaultExpanded={entry.citations?.length === 1}
+                      defaultExpanded={false}
                     />
                   ))}
 
@@ -282,22 +282,24 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                   >
                     Bind to a growth brief →
                   </button>
-                  <button
-                    type="button"
-                    className="tbtn"
-                    onClick={() => {
-                      const prevQuery =
-                        index > 0 && entries[index - 1]?.kind === 'query'
-                          ? entries[index - 1].queryText
-                          : null;
-                      const prompt = prevQuery
-                        ? `Write a Ship 30-style essay (~1,250 words) based on our research into “${prevQuery}”. Ground every claim in this session’s sources.`
-                        : 'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.';
-                      onSetEssay(prompt);
-                    }}
-                  >
-                    Set as an essay →
-                  </button>
+                  {!ans.writingPath && (
+                    <button
+                      type="button"
+                      className="tbtn"
+                      onClick={() => {
+                        const prevQuery =
+                          index > 0 && entries[index - 1]?.kind === 'query'
+                            ? entries[index - 1].queryText
+                            : null;
+                        const prompt = prevQuery
+                          ? `Write a Ship 30-style essay (~1,250 words) based on our research into “${prevQuery}”. Ground every claim in this session’s sources.`
+                          : 'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.';
+                        onSetEssay(prompt);
+                      }}
+                    >
+                      Set as an essay →
+                    </button>
+                  )}
                 </footer>
               </article>
             );

@@ -1197,6 +1197,163 @@ html::-webkit-scrollbar-thumb:hover {
 .idx-d { font: 400 13.5px/1.5 var(--f-text); color: var(--muted-ink); margin-top: 3px; }
 .idx-a { font: 400 18px var(--f-disp); color: var(--muted-ink); transition: transform var(--dur-fast), color var(--dur-fast); }
 .idx-row:hover .idx-a { transform: translateX(5px); color: var(--accent); }
+.idx-a.open { transform: rotate(90deg); color: var(--accent); }
+
+/* In-Card Accordion Interaction (Approach 1) */
+.idx-item {
+  border-bottom: 1px solid var(--border);
+  transition: background var(--dur-fast), border-left-color var(--dur-fast);
+}
+.idx-item.open {
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+}
+.idx-item .idx-row {
+  border-bottom: none;
+}
+.idx-panel {
+  padding: 2px 24px 24px 90px;
+  animation: idx-expand 0.22s var(--ease-out-expo);
+}
+@keyframes idx-expand {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.idx-write-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  margin-top: 6px;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.idx-write-line:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--wash);
+}
+.idx-ta {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font: 400 15px/1.5 var(--f-text);
+  color: var(--ink);
+  min-height: 52px;
+}
+.idx-ta::placeholder {
+  color: var(--faint);
+  font-style: italic;
+}
+.idx-format-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.idx-fmt-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font: 600 11px var(--f-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-ink);
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  cursor: pointer;
+  transition: all var(--dur-fast);
+}
+.idx-fmt-pill input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.idx-fmt-pill.active {
+  color: var(--surface);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.idx-chips-wrap {
+  margin-top: 14px;
+}
+.idx-chips-label {
+  display: block;
+  font: 600 10.5px var(--f-ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+  margin-bottom: 8px;
+}
+.idx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.idx-chip {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  font: 400 12.5px var(--f-text);
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-radius: 2px;
+  text-align: left;
+  transition: all var(--dur-fast);
+}
+.idx-chip:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--wash);
+  transform: translateY(-1px);
+}
+.idx-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.idx-cancel-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted-ink);
+  font: 600 11px var(--f-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+.idx-cancel-btn:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .idx-panel {
+    padding: 2px 10px 18px 10px;
+  }
+  .idx-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+  .idx-actions button {
+    flex: 1;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idx-panel {
+    animation: none;
+  }
+  .idx-a {
+    transition: none;
+  }
+}
+
 .fm-foot { margin: clamp(24px, 4vh, 36px) 0 0; font: 500 8.5px var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 .fm-dock {
   position: fixed;
@@ -1991,6 +2148,14 @@ html::-webkit-scrollbar-thumb:hover {
 /* =====================================================================
    VIEW TRANSITIONS — Editorial Cross-Fade & Folio Stability
    ===================================================================== */
+::view-transition-group(root) {
+  animation: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  height: 100%;
+  overflow: clip;
+}
 ::view-transition-old(root) {
   animation: vt-fade-out 0.18s var(--ease-in-out-soft) both;
 }

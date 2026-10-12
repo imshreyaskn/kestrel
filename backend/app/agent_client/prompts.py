@@ -97,6 +97,39 @@ Keep every field from the schema; citation IDs only from the provided evidence.
 """
 
 
+def _get_document_craft_parts() -> tuple[str, str, str, str, str]:
+    """Parse document-craft skill into (preamble, hard_bans, markdown_rules, html_rules, check_rules)."""
+    craft = default_skill_loader.load_skill("document-craft")
+    if not craft:
+        return ("", "", "", "", "")
+    text = craft.instructions
+
+    def extract_between(start_hdr: str, end_hdrs: list[str]) -> str:
+        if start_hdr not in text:
+            return ""
+        after = text.split(start_hdr, 1)[1]
+        for end_h in end_hdrs:
+            if end_h in after:
+                after = after.split(end_h, 1)[0]
+        return (start_hdr + after).strip()
+
+    preamble = text.split("## Hard bans", 1)[0].strip() if "## Hard bans" in text else ""
+    hard_bans = extract_between(
+        "## Hard bans",
+        ["## Markdown rules", "## HTML/CSS rules", "## Before returning"],
+    )
+    md_rules = extract_between(
+        "## Markdown rules",
+        ["## HTML/CSS rules", "## Before returning"],
+    )
+    html_rules = extract_between(
+        "## HTML/CSS rules",
+        ["## Before returning"],
+    )
+    checks = extract_between("## Before returning", [])
+    return (preamble, hard_bans, md_rules, html_rules, checks)
+
+
 def build_system_prompt(
     mode: str,
     evidence_block: str,
@@ -141,11 +174,8 @@ def build_system_prompt(
             else "Apply Ship 30 for 30 digital writing principles."
         )
 
-        craft = default_skill_loader.load_skill("document-craft")
-        craft_bans = ""
-        if craft and "## Hard bans" in craft.instructions:
-            parts = craft.instructions.split("## HTML/CSS rules")
-            craft_bans = "\n\n" + parts[0].strip()
+        _, hard_bans, _, _, checks = _get_document_craft_parts()
+        craft_addon = f"\n\n{hard_bans}\n\n{checks}" if hard_bans else ""
 
         if essay_word_target:
             lo = round(essay_word_target * 0.9)
@@ -153,6 +183,8 @@ def build_system_prompt(
             target_desc = f"Target ~{essay_word_target} words (accepted range {lo}–{hi} words)."
             approx_count = essay_word_target
         else:
+            lo = 1150
+            hi = 1350
             target_desc = "Target ~1,250 words (accepted range 1,150–1,350 words)."
             approx_count = 1250
 
@@ -168,15 +200,16 @@ def build_system_prompt(
   "insufficient_evidence": false
 }}"""
         mode_instructions = (
-            f"WORKFLOW MODE: Ship 30 for 30 Digital Essay\n{skill_text}{craft_bans}\n"
+            f"WORKFLOW MODE: Ship 30 for 30 Digital Essay\n{skill_text}{craft_addon}\n"
+            f"CRITICAL WORD COUNT REQUIREMENT: Your essay MUST be at least {lo} words and at most {hi} words (aim for ~{approx_count} words). To reach the required minimum of {lo} words without superficial padding, thoroughly develop each section with concrete mechanisms, expert insights from the evidence, step-by-step walkthroughs, and operational implications.\n"
             "If insufficient_evidence is true: do NOT attempt the full essay. State clearly what evidence is missing and offer the closest topic the archive can cover."
         )
 
     elif mode == "artifact_markdown":
-        craft = default_skill_loader.load_skill("document-craft")
+        preamble, hard_bans, md_rules, _, checks = _get_document_craft_parts()
         craft_text = (
-            craft.instructions
-            if craft
+            f"{preamble}\n\n{hard_bans}\n\n{md_rules}\n\n{checks}".strip()
+            if hard_bans
             else "Produce clean, publication-grade markdown."
         )
         schema_desc = """OUTPUT SCHEMA (STRICT JSON):
@@ -189,10 +222,10 @@ def build_system_prompt(
         mode_instructions = f"WORKFLOW MODE: Standalone Markdown Artifact\n{craft_text}"
 
     elif mode == "artifact_html":
-        craft = default_skill_loader.load_skill("document-craft")
+        preamble, hard_bans, _, html_rules, checks = _get_document_craft_parts()
         craft_text = (
-            craft.instructions
-            if craft
+            f"{preamble}\n\n{hard_bans}\n\n{html_rules}\n\n{checks}".strip()
+            if hard_bans
             else "Produce clean, standalone HTML with embedded styles."
         )
         schema_desc = """OUTPUT SCHEMA (STRICT JSON):
@@ -201,7 +234,8 @@ def build_system_prompt(
   "title": "Clear, specific deliverable title",
   "content": "<!DOCTYPE html><html><head><style>/* scoped editorial css */</style></head><body><h1>Title</h1></body></html>",
   "source_evidence_ids": ["E1"]
-}"""
+}
+CRITICAL JSON FORMATTING: The entire HTML document must be a single escaped string inside 'content'. Escape all internal quotes as \\\" and internal newlines as \\n."""
         mode_instructions = f"WORKFLOW MODE: Standalone HTML Artifact\n{craft_text}"
 
     else:  # default "research"

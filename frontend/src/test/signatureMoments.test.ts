@@ -111,12 +111,13 @@ describe('Phase 4: Signature Moments Engine Verification', () => {
           (document as any).startViewTransition(() => {
             currentView = 'manuscript';
             appendQueryEntry();
+            window.scrollTo({ top: 0, behavior: 'instant' });
           });
         } else {
           currentView = 'manuscript';
           appendQueryEntry();
+          window.scrollTo({ top: 0, behavior: 'instant' });
         }
-        window.scrollTo({ top: 0, behavior: 'instant' });
       }
 
       expect(document.startViewTransition).toHaveBeenCalled();
@@ -125,7 +126,7 @@ describe('Phase 4: Signature Moments Engine Verification', () => {
       expect(scrollToMock).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
     });
 
-    it('smooth scrolls to bottom only on subsequent queries inside Manuscript', () => {
+    it('smooth scrolls to bottom only on subsequent queries inside Manuscript without flashing full-page view transition', () => {
       vi.useFakeTimers();
       const scrollToMock = vi.fn();
       (globalThis as any).window.scrollTo = scrollToMock;
@@ -139,13 +140,7 @@ describe('Phase 4: Signature Moments Engine Verification', () => {
       };
 
       if (!isInitialSwitch) {
-        if ('startViewTransition' in document && !prefersReducedMotion()) {
-          (document as any).startViewTransition(() => {
-            appendQueryEntry();
-          });
-        } else {
-          appendQueryEntry();
-        }
+        appendQueryEntry();
         setTimeout(() => {
           window.scrollTo({ top: 1200, behavior: 'smooth' });
         }, 100);

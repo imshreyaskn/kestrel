@@ -125,7 +125,14 @@ ValidatedResponse = (
 
 
 _WORD_COUNT_RE = re.compile(r"\b\w+\b")
-_EMOJI_RE = re.compile(r"[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F]")
+# Matches pictorial emoji while strictly preserving monochrome typographical symbols
+# (e.g. checkmarks ✓/✔, ballot crosses ✗/✘, stars ★/☆, and em-dashes/arrows).
+_EMOJI_RE = re.compile(
+    r"[\U0001F1E6-\U0001FAFF"
+    r"\u2702-\u2709\u270A-\u270D\u270F\u2712\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27B0\u27BF"
+    r"\u2600-\u2604\u260E\u2611\u2614\u2615\u2618\u261D\u2620\u2622\u2623\u2626\u262A\u262E\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F\u2660\u2663\u2665\u2666\u2668\u267B\u267E\u267F\u2692-\u2697\u2699\u269B\u269C\u26A0\u26A1\u26A7\u26AA\u26AB\u26B0\u26B1\u26BD\u26BE\u26C4\u26C5\u26C8\u26CE\u26CF\u26D1\u26D3\u26D4\u26E9\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD"
+    r"\uFE0F]"
+)
 
 
 def count_words(text: str) -> int:
@@ -411,7 +418,15 @@ def validate_agent_response(
             raise EssayLengthError(actual_wc, min_words=min_wc, max_words=max_wc)
 
         raw_path = str(payload.get("writing_path", "actionable") or "actionable").strip().lower()
-        if raw_path not in VALID_WRITING_PATHS:
+        matched = [
+            p for p in ("actionable", "analytical", "aspirational", "anthropological")
+            if p in raw_path
+        ]
+        if len(matched) == 1:
+            effective_path: WritingPath = matched[0]  # type: ignore[assignment]
+        elif raw_path in VALID_WRITING_PATHS:
+            effective_path = raw_path  # type: ignore[assignment]
+        else:
             raise AgentOutputError(
                 "INVALID_WRITING_PATH",
                 f"writing_path must be one of {sorted(VALID_WRITING_PATHS)}; got {raw_path!r}",
@@ -422,7 +437,7 @@ def validate_agent_response(
             essay_markdown=essay_text,
             approximate_word_count=approx_wc,
             actual_word_count=actual_wc,
-            writing_path=raw_path,  # type: ignore[arg-type]
+            writing_path=effective_path,
             citations=cleaned_citations,
             insufficient_evidence=insufficient,
         )

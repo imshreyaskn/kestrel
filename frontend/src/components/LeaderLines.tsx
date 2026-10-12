@@ -178,6 +178,12 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       if (btn?.dataset.note) {
         const note = document.getElementById(btn.dataset.note);
         if (note) {
+          if (note.classList.contains('collapsed')) {
+            const toggleBtn = note.querySelector<HTMLButtonElement>('.snote-toggle-btn');
+            if (toggleBtn) {
+              toggleBtn.click();
+            }
+          }
           note.scrollIntoView({
             block: 'center',
             behavior: prefersReducedMotion() ? 'auto' : 'smooth',

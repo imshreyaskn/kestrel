@@ -752,8 +752,6 @@ class ConversationService:
                     growth_brief_id=linked_brief_id,
                 )
                 artifact_id = artifact.id
-                if linked_brief_id:
-                    growth_brief_id = linked_brief_id
 
             else:  # ValidatedResearchResponse
                 assistant_message.content = validated.answer_markdown
