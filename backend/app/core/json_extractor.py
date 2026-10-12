@@ -62,6 +62,7 @@ def find_outermost_json_object(text: str) -> str | None:
                 if depth == 0:
                     return text[start_idx : idx + 1]
 
+
 def try_repair_unclosed_json(text: str) -> str | None:
     """
     Attempts to repair syntactically unclosed JSON objects caused by model truncation

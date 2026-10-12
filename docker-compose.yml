@@ -24,7 +24,7 @@ services:
     container_name: kestrel-agent-gateway
     environment:
       PORT: 8010
-      NODE_ENV: development
+      NODE_ENV: production
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:1.5b}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set}

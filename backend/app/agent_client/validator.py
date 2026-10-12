@@ -239,9 +239,11 @@ def reconcile_inline_labels(
 
     # Sort deterministically by numeric evidence rank (Move 1 & CIT4)
     completed_citations.sort(
-        key=lambda c: int(c.evidence_id[1:])
-        if c.evidence_id.startswith("E") and c.evidence_id[1:].isdigit()
-        else 999
+        key=lambda c: (
+            int(c.evidence_id[1:])
+            if c.evidence_id.startswith("E") and c.evidence_id[1:].isdigit()
+            else 999
+        )
     )
 
     return cleaned_text, completed_citations, invalid
@@ -304,15 +306,15 @@ def validate_agent_response(
     Enforces that citation IDs must strictly belong to valid_evidence_ids.
     """
     if stop_reason in ("length", "max_tokens"):
-        raise AgentOutputError("TRUNCATED", "provider stopped at the output token ceiling")
+        raise AgentOutputError(
+            "TRUNCATED", "provider stopped at the output token ceiling"
+        )
 
     try:
         raw_json = extract_json_payload(raw_response_text)
     except StructuredExtractionError as exc:
         if allow_raw_fallback and mode == "research":
-            return _extract_research_raw_fallback(
-                raw_response_text, valid_evidence_ids
-            )
+            return _extract_research_raw_fallback(raw_response_text, valid_evidence_ids)
         raise AgentOutputError("JSON_PARSE", str(exc)) from exc
 
     try:
@@ -322,13 +324,15 @@ def validate_agent_response(
                 return _extract_research_raw_fallback(
                     raw_response_text, valid_evidence_ids
                 )
-            raise AgentOutputError("JSON_PARSE", "Extracted JSON root must be an object")
+            raise AgentOutputError(
+                "JSON_PARSE", "Extracted JSON root must be an object"
+            )
     except json.JSONDecodeError as exc:
         if allow_raw_fallback and mode == "research":
-            return _extract_research_raw_fallback(
-                raw_response_text, valid_evidence_ids
-            )
-        raise AgentOutputError("JSON_PARSE", f"Failed to parse extracted JSON: {exc}") from exc
+            return _extract_research_raw_fallback(raw_response_text, valid_evidence_ids)
+        raise AgentOutputError(
+            "JSON_PARSE", f"Failed to parse extracted JSON: {exc}"
+        ) from exc
 
     if mode == "growth_brief":
         raw_citations = payload.get("citations", [])
@@ -349,7 +353,9 @@ def validate_agent_response(
         recommendation = str(payload.get("recommendation", "")).strip()
         insufficient = bool(payload.get("insufficient_evidence", False))
         if not recommendation and not insufficient:
-            raise AgentOutputError("EMPTY_ANSWER", "Growth brief recommendation must not be empty")
+            raise AgentOutputError(
+                "EMPTY_ANSWER", "Growth brief recommendation must not be empty"
+            )
 
         summary = str(payload.get("research_summary", "")).strip()
         rec_clean, comp_cits, inv_rec = reconcile_inline_labels(
@@ -417,9 +423,14 @@ def validate_agent_response(
         if not insufficient and not (min_wc <= actual_wc <= max_wc):
             raise EssayLengthError(actual_wc, min_words=min_wc, max_words=max_wc)
 
-        raw_path = str(payload.get("writing_path", "actionable") or "actionable").strip().lower()
+        raw_path = (
+            str(payload.get("writing_path", "actionable") or "actionable")
+            .strip()
+            .lower()
+        )
         matched = [
-            p for p in ("actionable", "analytical", "aspirational", "anthropological")
+            p
+            for p in ("actionable", "analytical", "aspirational", "anthropological")
             if p in raw_path
         ]
         if len(matched) == 1:

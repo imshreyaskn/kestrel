@@ -143,4 +143,3 @@ def test_unclosed_json_fence_repaired_successfully():
     assert "Here is the sequence explained" in result.answer_markdown
     assert len(result.citations) == 1
     assert result.citations[0].evidence_id == "E7"
-

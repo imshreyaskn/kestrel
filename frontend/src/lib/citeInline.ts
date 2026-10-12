@@ -113,6 +113,7 @@ export function buildAnswerData(content: string, stamp: string): AnswerData {
   const sections: AnswerData['sections'] = [];
   let currentParagraphs: string[] = [];
   let paragraphLines: string[] = [];
+  let hasCompletedLead = false;
 
   const flushParagraph = () => {
     if (paragraphLines.length > 0) {
@@ -124,44 +125,89 @@ export function buildAnswerData(content: string, stamp: string): AnswerData {
   for (const rawLine of lines) {
     const line = rawLine.trim();
 
+    const isNumberedHeading =
+      /^(\d+\.|\b[IVXLCDM]+\.)\s+(.+)$/i.test(line) ||
+      /^\*\*(\d+\.|\b[IVXLCDM]+\.)\s*([^*]+)\*\*$/i.test(line) ||
+      /^(\d+|\b[IVXLCDM]+)\*\*\s*(.+)$/i.test(line) ||
+      /^\*\*(\d+|\b[IVXLCDM]+)\.?\*\*\s*(.+)$/i.test(line) ||
+      /^(\d+\.|\b[IVXLCDM]+\.)\s*\*\*(.+)\*\*?$/i.test(line);
+
     const isSectionHeading =
       (sections.length > 0 && /^#{1,4}\s+/.test(line)) ||
-      /^#{2,4}\s+/.test(line);
+      /^#{2,4}\s+/.test(line) ||
+      isNumberedHeading;
 
     if (isSectionHeading) {
       flushParagraph();
       currentParagraphs = [];
-      const headingText = line.replace(/^#{1,4}\s+/, '').replace(/[*_`]/g, '');
-      const rnMatch = headingText.match(/^([IVXLCDM]+)\.\s*(.*)$/i);
-      const rn = rnMatch ? rnMatch[1].toUpperCase() : (ROMAN[sections.length] ?? '§');
-      const h = rnMatch ? rnMatch[2] : headingText;
+      let headingText = line
+        .replace(/^#{1,4}\s+/, '')
+        .replace(/^\*+|\*+$/g, '')
+        .trim();
+      let remainingParagraph = '';
+      const colonIdx = headingText.indexOf(':');
+      if (colonIdx > 0 && colonIdx < 80 && isNumberedHeading && !/^#{1,4}\s+/.test(line)) {
+        remainingParagraph = headingText.slice(colonIdx + 1).trim();
+        headingText = headingText.slice(0, colonIdx).trim();
+      }
+
+      const rnMatch = headingText.match(/^([IVXLCDM]+|\d+)(?:\.|\*\*|\.\s*\*+|\s*\*+)?\s*(.*)$/i);
+      const rn = rnMatch
+        ? (isNaN(Number(rnMatch[1]))
+            ? rnMatch[1].toUpperCase()
+            : (ROMAN[Number(rnMatch[1]) - 1] ?? rnMatch[1]))
+        : (ROMAN[sections.length] ?? '§');
+      const rawH = rnMatch ? rnMatch[2].trim() : headingText.trim();
+      const h = rawH.replace(/^\*+|\*+$/g, '').trim();
 
       sections.push({
         rn,
         h,
         paragraphs: currentParagraphs,
       });
+      hasCompletedLead = true;
+
+      if (remainingParagraph) {
+        paragraphLines.push(remainingParagraph);
+      }
       continue;
     }
 
     if (!line) {
+      if (!hasCompletedLead && leadLines.length > 0) {
+        hasCompletedLead = true;
+      }
       flushParagraph();
       continue;
     }
 
-    // Before any section heading: everything belongs to the lead block.
-    if (sections.length === 0) {
-      leadLines.push(line.replace(/^#\s*/, ''));
+    // Clean dangling or orphaned markdown delimiters at line boundaries (e.g. "** Relying on..." -> "Relying on...")
+    const cleanedLine = line
+      .replace(/^\*\*\s+/, '')
+      .replace(/\s+\*\*$/, '');
+
+    // Lead block: first paragraph before any headings or paragraph breaks
+    if (!hasCompletedLead) {
+      leadLines.push(cleanedLine.replace(/^#\s*/, ''));
       continue;
     }
 
-    paragraphLines.push(line);
+    // Body paragraphs following lead
+    if (sections.length === 0) {
+      sections.push({
+        rn: '',
+        h: '',
+        paragraphs: currentParagraphs,
+      });
+    }
+
+    paragraphLines.push(cleanedLine);
   }
   flushParagraph();
 
   const titled: AnswerData['sections'] = sections.filter((s) => s.h || s.paragraphs.length > 0);
   titled.forEach((sec, idx) => {
-    if (!sec.rn) sec.rn = ROMAN[idx] ?? '§';
+    if (!sec.rn && sec.h) sec.rn = ROMAN[idx] ?? '§';
   });
 
   const lead = leadLines.join(' ');

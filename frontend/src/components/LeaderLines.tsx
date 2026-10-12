@@ -30,25 +30,29 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
     const refs = Array.from(sheet.querySelectorAll<HTMLElement>('.sn-ref'));
 
     // Clear stale lines
-    const activeNoteIds = new Set<string>();
-    refs.forEach((btn) => {
+    const activeLeadIds = new Set<string>();
+    refs.forEach((btn, idx) => {
       const noteId = btn.dataset.note;
       if (noteId && document.getElementById(noteId)) {
-        activeNoteIds.add(noteId);
+        activeLeadIds.add(`${noteId}-${idx}`);
       }
     });
 
     Array.from(svg.querySelectorAll<SVGGElement>('g.lead')).forEach((g) => {
-      if (!g.dataset.note || !activeNoteIds.has(g.dataset.note)) {
+      const leadId = g.dataset.leadId;
+      if (!leadId || !activeLeadIds.has(leadId)) {
         g.remove();
       }
     });
 
-    refs.forEach((btn) => {
+    refs.forEach((btn, idx) => {
       const noteId = btn.dataset.note;
       if (!noteId) return;
+
       const note = document.getElementById(noteId);
       if (!note || !btn.offsetParent || !note.offsetParent) return;
+
+      const leadId = `${noteId}-${idx}`;
 
       const b = btn.getBoundingClientRect();
       const n = note.getBoundingClientRect();
@@ -60,10 +64,12 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
 
       if (x2 - x1 < 10) return;
 
-      const mx = (x1 + x2) / 2;
-      const d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${mx.toFixed(1)} ${y1.toFixed(1)}, ${mx.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+      const dx = Math.max(x2 - x1, 20);
+      const cp1x = x1 + dx * 0.45;
+      const cp2x = x2 - dx * 0.45;
+      const d = `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${cp1x.toFixed(1)} ${y1.toFixed(1)}, ${cp2x.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`;
 
-      let g = svg.querySelector<SVGGElement>(`g.lead[data-note="${noteId}"]`);
+      let g = svg.querySelector<SVGGElement>(`g.lead[data-lead-id="${leadId}"]`);
       let path: SVGPathElement;
       let dot: SVGCircleElement;
 
@@ -71,6 +77,7 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
         g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g.classList.add('lead');
         g.dataset.note = noteId;
+        g.dataset.leadId = leadId;
 
         path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -87,9 +94,9 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       dot.setAttribute('cx', String(x2));
       dot.setAttribute('cy', String(y2));
 
-      const isFirstAppearance = !knownNotes.current.has(noteId);
+      const isFirstAppearance = !knownNotes.current.has(leadId);
       if (isFirstAppearance) {
-        knownNotes.current.add(noteId);
+        knownNotes.current.add(leadId);
       }
 
       const shouldAnimate =
@@ -132,18 +139,18 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
 
     // Two-way hover / focus handlers
     const setHotState = (noteId: string, on: boolean) => {
-      const btn = document.querySelector(`.sn-ref[data-note="${noteId}"]`);
+      const btns = document.querySelectorAll<HTMLElement>(`.sn-ref[data-note="${noteId}"]`);
       const note = document.getElementById(noteId);
-      const lead = svgRef.current?.querySelector(`g.lead[data-note="${noteId}"]`);
+      const leads = svgRef.current?.querySelectorAll<SVGGElement>(`g.lead[data-note="${noteId}"]`);
 
-      if (btn) btn.classList.toggle('hot', on);
-      if (note) note.classList.toggle('hot', on);
-      if (lead) lead.classList.toggle('hot', on);
-
-      if (btn) {
+      btns.forEach((btn) => {
+        btn.classList.toggle('hot', on);
         const p = btn.closest('p');
         if (p) p.classList.toggle('p-hot', on);
-      }
+      });
+
+      if (note) note.classList.toggle('hot', on);
+      leads?.forEach((lead) => lead.classList.toggle('hot', on));
     };
 
     const handleMouseOver = (e: MouseEvent) => {
@@ -256,6 +263,8 @@ export const LeaderLines: React.FC<LeaderLinesProps> = ({ sheetRef }) => {
       observer.observe(sheetRef.current, {
         childList: true,
         subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style'],
       });
     }
 

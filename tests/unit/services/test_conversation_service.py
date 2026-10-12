@@ -269,13 +269,15 @@ async def test_conversation_service_generates_when_evidence_empty():
         session_id=str(session_id),
         provider="local",
         model_id="qwen2.5:7b-instruct-q4_K_M",
-        raw_response=json.dumps({
-            "answer_markdown": "The Lenny's Podcast archive does not contain specific PLG conversion benchmarks.",
-            "citations": [],
-            "insufficient_evidence": True,
-            "scope": "in_scope",
-            "follow_up_question": "Would you like to explore qualitative PLG frameworks instead?",
-        }),
+        raw_response=json.dumps(
+            {
+                "answer_markdown": "The Lenny's Podcast archive does not contain specific PLG conversion benchmarks.",
+                "citations": [],
+                "insufficient_evidence": True,
+                "scope": "in_scope",
+                "follow_up_question": "Would you like to explore qualitative PLG frameworks instead?",
+            }
+        ),
         latency_ms=100.0,
     )
 
@@ -393,11 +395,13 @@ async def test_conversation_service_strips_citations_from_history():
         session_id=str(session_id),
         provider="local",
         model_id="qwen2.5:7b-instruct-q4_K_M",
-        raw_response=json.dumps({
-            "answer_markdown": "Here is more context.",
-            "citations": [],
-            "insufficient_evidence": False,
-        }),
+        raw_response=json.dumps(
+            {
+                "answer_markdown": "Here is more context.",
+                "citations": [],
+                "insufficient_evidence": False,
+            }
+        ),
         latency_ms=100.0,
     )
 
@@ -421,7 +425,10 @@ async def test_conversation_service_strips_citations_from_history():
     passed_context = mock_gateway.generate.call_args.kwargs["conversation_context"]
     assert len(passed_context) == 1
     assert passed_context[0]["role"] == "assistant"
-    assert passed_context[0]["content"] == "Elena Verna noted [source] that PLG requires virality [source]."
+    assert (
+        passed_context[0]["content"]
+        == "Elena Verna noted [source] that PLG requires virality [source]."
+    )
     assert "[E1]" not in passed_context[0]["content"]
     assert "[E2]" not in passed_context[0]["content"]
     assert "[source]" in passed_context[0]["content"]
@@ -512,8 +519,9 @@ async def test_conversation_service_marks_cancelled_on_disconnect():
     mock_sess_res.scalars.return_value.first.return_value = session_obj
     mock_hist_res = MagicMock()
     mock_hist_res.scalars.return_value.all.return_value = []
-    
+
     call_count = 0
+
     def execute_mock(stmt):
         nonlocal call_count
         call_count += 1
@@ -522,7 +530,11 @@ async def test_conversation_service_marks_cancelled_on_disconnect():
         if call_count == 2:
             return mock_hist_res
         asst = next(
-            (c.args[0] for c in mock_db.add.call_args_list if getattr(c.args[0], "role", None) == "assistant"),
+            (
+                c.args[0]
+                for c in mock_db.add.call_args_list
+                if getattr(c.args[0], "role", None) == "assistant"
+            ),
             None,
         )
         asst_res = MagicMock()
@@ -651,7 +663,9 @@ def test_build_retrieval_query_followup_expansion():
 
     # 3. Short query (<6 words) is joined
     q3 = "tell me more"
-    assert build_retrieval_query(q3, "Retention loops") == "Retention loops\ntell me more"
+    assert (
+        build_retrieval_query(q3, "Retention loops") == "Retention loops\ntell me more"
+    )
 
     # 4. If no prior user turn, returned as-is
     assert build_retrieval_query("why that?", None) == "why that?"
@@ -699,7 +713,9 @@ def test_classify_generation_error_typed_gateway_and_truncation():
     assert retry is False
 
     # Truncated output -> GENERATION_TRUNCATED (non-retryable)
-    code, msg, retry = classify_generation_error(AgentOutputError("TRUNCATED", "Hit max tokens"))
+    code, msg, retry = classify_generation_error(
+        AgentOutputError("TRUNCATED", "Hit max tokens")
+    )
     assert code == "GENERATION_TRUNCATED"
     assert "exceeded the model's output limit" in msg
     assert retry is False
@@ -717,12 +733,18 @@ def test_build_retrieval_query_excludes_conversational_pleasantries():
     assert build_retrieval_query("cool", prior) == "cool"
     assert build_retrieval_query("awesome", prior) == "awesome"
     assert build_retrieval_query("ok", prior) == "ok"
-    assert build_retrieval_query("hello! what can you do?", prior) == "hello! what can you do?"
+    assert (
+        build_retrieval_query("hello! what can you do?", prior)
+        == "hello! what can you do?"
+    )
     assert build_retrieval_query("bye", prior) == "bye"
 
     # Genuine follow-ups (< 6 words or pronoun) MUST be expanded
     assert build_retrieval_query("tell me more", prior) == f"{prior}\ntell me more"
-    assert build_retrieval_query("how does it work?", prior) == f"{prior}\nhow does it work?"
+    assert (
+        build_retrieval_query("how does it work?", prior)
+        == f"{prior}\nhow does it work?"
+    )
 
 
 def test_clean_artifact_digest_strips_html_boilerplate():
@@ -753,10 +775,14 @@ def test_build_retrieval_query_includes_assistant_context_when_available():
     from backend.app.services.conversation_service import build_retrieval_query
 
     prior_user = "What frameworks exist for growth?"
-    prior_assistant = "Elena Verna presents the product-led sales loop [E1] for B2B freemium models."
+    prior_assistant = (
+        "Elena Verna presents the product-led sales loop [E1] for B2B freemium models."
+    )
 
     # When query is anaphoric and prior_assistant is given, context includes assistant's framework title
-    expanded = build_retrieval_query("tell me more about it", prior_user, prior_assistant)
+    expanded = build_retrieval_query(
+        "tell me more about it", prior_user, prior_assistant
+    )
     assert "Elena Verna presents the product-led sales loop" in expanded
     assert "[E1]" not in expanded  # Strips citation markers from query expansion
     assert "tell me more about it" in expanded
@@ -812,7 +838,11 @@ async def test_process_message_stream_recovers_failed_status_with_rollback():
     # 1. db.rollback() must have been called to clear the aborted SQL transaction
     assert mock_db.rollback.called
     # 2. Assistant message must be transitioned to 'failed'
-    added_asst = next(c.args[0] for c in mock_db.add.call_args_list if getattr(c.args[0], "role", None) == "assistant")
+    added_asst = next(
+        c.args[0]
+        for c in mock_db.add.call_args_list
+        if getattr(c.args[0], "role", None) == "assistant"
+    )
     assert added_asst.status == "failed"
     assert added_asst.error_code == "GENERATION_FAILED"
     # 3. Status must have been safely committed
@@ -895,17 +925,19 @@ async def test_process_message_stream_deduplicates_duplicate_chunks_in_message_s
         session_id=str(session_id),
         provider="local",
         model_id="qwen2.5:1.5b",
-        raw_response=json.dumps({
-            "mode": "research",
-            "answer_markdown": "Retention findings [E1][E2].",
-            "citations": [
-                {"evidence_id": "E1", "supports": "First claim"},
-                {"evidence_id": "E2", "supports": "Second claim"},
-                {"evidence_id": "E1", "supports": "Duplicate claim"},
-            ],
-            "scope": "in_scope",
-            "insufficient_evidence": False,
-        }),
+        raw_response=json.dumps(
+            {
+                "mode": "research",
+                "answer_markdown": "Retention findings [E1][E2].",
+                "citations": [
+                    {"evidence_id": "E1", "supports": "First claim"},
+                    {"evidence_id": "E2", "supports": "Second claim"},
+                    {"evidence_id": "E1", "supports": "Duplicate claim"},
+                ],
+                "scope": "in_scope",
+                "insufficient_evidence": False,
+            }
+        ),
         latency_ms=25.0,
         usage={"prompt_tokens": 100, "completion_tokens": 50},
         stop_reason="stop",
@@ -931,7 +963,11 @@ async def test_process_message_stream_deduplicates_duplicate_chunks_in_message_s
     assert [c["evidence_id"] for c in citations_emitted] == ["E1", "E2"]
 
     # Verify MessageSource instances added to db
-    added_sources = [c.args[0] for c in mock_db.add.call_args_list if isinstance(c.args[0], MessageSource)]
+    added_sources = [
+        c.args[0]
+        for c in mock_db.add.call_args_list
+        if isinstance(c.args[0], MessageSource)
+    ]
     # Exactly ONE row inserted for shared_chunk_id, avoiding duplicate primary key violation!
     assert len(added_sources) == 1
     assert added_sources[0].chunk_id == shared_chunk_id
@@ -980,22 +1016,28 @@ async def test_conversation_service_stream_essay_flow_stamps_metadata():
         query="Write an essay on PLG",
     )
 
-    essay_text = ("Product led growth transforms acquisition into retention [E1]. " + ("growth " * 1220)).strip()
+    essay_text = (
+        "Product led growth transforms acquisition into retention [E1]. "
+        + ("growth " * 1220)
+    ).strip()
     mock_gateway = AsyncMock()
     mock_gateway.generate.return_value = GatewayGenerationResult(
         request_id="req-essay",
         session_id=str(session_id),
         provider="local",
         model_id="qwen2.5:1.5b",
-        raw_response=json.dumps({
-            "title": "PLG Playbook",
-            "essay_markdown": essay_text,
-            "approximate_word_count": 1230,
-            "writing_path": "analytical",
-            "citations": [{"evidence_id": "E1", "supports": "PLG definition"}],
-            "insufficient_evidence": False,
-        }),
+        raw_response=json.dumps(
+            {
+                "title": "PLG Playbook",
+                "essay_markdown": essay_text,
+                "approximate_word_count": 1230,
+                "writing_path": "analytical",
+                "citations": [{"evidence_id": "E1", "supports": "PLG definition"}],
+                "insufficient_evidence": False,
+            }
+        ),
         latency_ms=300.0,
+        usage={"prompt_tokens": 150, "completion_tokens": 80},
     )
 
     service = ConversationService(
@@ -1022,7 +1064,5 @@ async def test_conversation_service_stream_essay_flow_stamps_metadata():
     assert metadata["skill"] == "ship-30-for-30@v1"
     assert metadata["writing_path"] == "analytical"
     assert "evidence_rrf_scores" in metadata
-
-
-
-
+    assert metadata["gateway_latency_ms"] == 300.0
+    assert metadata["token_usage"] == {"prompt_tokens": 150, "completion_tokens": 80}

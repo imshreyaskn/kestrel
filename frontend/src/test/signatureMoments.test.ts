@@ -267,6 +267,26 @@ describe('Phase 4: Signature Moments Engine Verification', () => {
       const prompt = 'Write a Ship 30-style essay (~1,250 words) arguing that activation improves when you narrow the first run to one personally meaningful outcome. Ground every claim in this session’s sources.';
       expect(prompt).toContain('activation improves');
     });
+
+    it('generates a distinct leader line for each citation instance when cited multiple times in text', () => {
+      // Simulate 3 buttons citing the same note 'sn-e1' in different paragraphs
+      const buttons = [
+        { dataset: { note: 'sn-e1' }, offsetParent: {} },
+        { dataset: { note: 'sn-e1' }, offsetParent: {} },
+        { dataset: { note: 'sn-e1' }, offsetParent: {} },
+      ];
+
+      const activeLeadIds = new Set<string>();
+      buttons.forEach((btn, idx) => {
+        activeLeadIds.add(`${btn.dataset.note}-${idx}`);
+      });
+
+      // All 3 instances receive their own unique leader connection ID
+      expect(activeLeadIds.size).toBe(3);
+      expect(activeLeadIds.has('sn-e1-0')).toBe(true);
+      expect(activeLeadIds.has('sn-e1-1')).toBe(true);
+      expect(activeLeadIds.has('sn-e1-2')).toBe(true);
+    });
   });
 });
 

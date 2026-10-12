@@ -80,7 +80,9 @@ class EvidenceItem:
         }
 
 
-def _overlaps(a: RetrievedCandidate, b: RetrievedCandidate, thresh: float = 0.5) -> bool:
+def _overlaps(
+    a: RetrievedCandidate, b: RetrievedCandidate, thresh: float = 0.5
+) -> bool:
     """Check if two candidates from the same episode overlap significantly by char range."""
     if a.source_id != b.source_id:
         return False

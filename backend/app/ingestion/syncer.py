@@ -59,7 +59,7 @@ def sync_transcripts_repo(
     # Strategy 1: Git clone or pull
     git_available = shutil.which("git") is not None
 
-    if git_available:
+    if git_available and repo_url:
         try:
             if git_dir.exists():
                 logger.info("Pulling latest upstream changes in %s", target_dir)
@@ -98,11 +98,13 @@ def sync_transcripts_repo(
                 archive_path.write_bytes(resp.content)
 
             with tarfile.open(archive_path, "r:gz") as tar:
-                # PEP 706 safe tar extraction with 'data' filter in Python 3.12+
+                # PEP 706 safe tar extraction with 'data' filter in Python 3.12+ (mandatory security requirement)
                 if hasattr(tarfile, "data_filter"):
                     tar.extractall(path=temp_dir, filter="data")
                 else:
-                    tar.extractall(path=temp_dir)
+                    raise RuntimeError(
+                        "Python runtime lacks PEP 706 tarfile.data_filter; extraction aborted for security"
+                    )
 
             # GitHub tarballs unpack into a single top-level directory (e.g. lennys-podcast-transcripts-main/)
             extracted_subdirs = [d for d in temp_dir.iterdir() if d.is_dir()]

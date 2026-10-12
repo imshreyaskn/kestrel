@@ -270,9 +270,15 @@ def test_rrf_fusion_dedupes_overlapping_chunks() -> None:
     # Chunk 1: chars 0..200 (score 0.9)
     # Chunk 2: chars 80..280 (60% overlap with Chunk 1) (score 0.8)
     # Chunk 3: chars 500..700 (disjoint from Chunk 1 and 2) (score 0.7)
-    chunk_1 = create_candidate(uuid.uuid4(), src_id, chunk_index=0, score=0.9, char_start=0, char_end=200)
-    chunk_2 = create_candidate(uuid.uuid4(), src_id, chunk_index=1, score=0.8, char_start=80, char_end=280)
-    chunk_3 = create_candidate(uuid.uuid4(), src_id, chunk_index=4, score=0.7, char_start=500, char_end=700)
+    chunk_1 = create_candidate(
+        uuid.uuid4(), src_id, chunk_index=0, score=0.9, char_start=0, char_end=200
+    )
+    chunk_2 = create_candidate(
+        uuid.uuid4(), src_id, chunk_index=1, score=0.8, char_start=80, char_end=280
+    )
+    chunk_3 = create_candidate(
+        uuid.uuid4(), src_id, chunk_index=4, score=0.7, char_start=500, char_end=700
+    )
 
     dense = [chunk_1, chunk_2, chunk_3]
     fused = compute_rrf_fusion(dense, [], top_k=5, max_per_source=3)
@@ -319,4 +325,3 @@ async def test_hybrid_retrieval_service_weak_evidence_flag() -> None:
     assert not result.insufficient_evidence
     assert len(result) == 1
     assert result.weak_evidence is True
-

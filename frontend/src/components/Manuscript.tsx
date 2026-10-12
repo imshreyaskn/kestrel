@@ -212,17 +212,49 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
 
           if (entry.kind === 'answer' && entry.answerData) {
             const ans = entry.answerData;
+            const citations = entry.citations || [];
+
+            // Group citations by where they FIRST appear in the document flow
+            // so they float in the margin alongside the text that introduced them.
+            const unplacedCitations = [...citations];
+
+            const extractCitationsForText = (text: string): Citation[] => {
+              if (!text || unplacedCitations.length === 0) return [];
+              const segments = segmentTextWithCitations(text, citations);
+              const foundIndices = new Set(
+                segments
+                  .filter((s): s is { refIndex: number; evidenceId: string } => typeof s !== 'string')
+                  .map((s) => s.refIndex)
+              );
+              const matched: Citation[] = [];
+              for (let i = unplacedCitations.length - 1; i >= 0; i--) {
+                const c = unplacedCitations[i];
+                if (foundIndices.has(c.refIndex)) {
+                  matched.unshift(c);
+                  unplacedCitations.splice(i, 1);
+                }
+              }
+              return matched;
+            };
+
+            const leadCitations = ans.lead ? extractCitationsForText(ans.lead) : [];
+
             return (
               <article key={entry.id} className="entry" style={staggerStyle}>
                 <div className="a-body cf">
-                  {/* Lead paragraph */}
+                  {/* Lead paragraph & its claimed margin notes */}
                   {ans.lead && (
-                    <p className="a-lead">
-                      <RichText text={ans.lead} citations={entry.citations} />
-                    </p>
+                    <>
+                      {leadCitations.map((cit) => (
+                        <SideNote key={cit.id} citation={cit} defaultExpanded={false} />
+                      ))}
+                      <p className="a-lead">
+                        <RichText text={ans.lead} citations={entry.citations} />
+                      </p>
+                    </>
                   )}
 
-                  {/* Section paragraphs */}
+                  {/* Section paragraphs & their claimed margin notes */}
                   {ans.sections.map((sec, sIdx) => {
                     return (
                       <React.Fragment key={sIdx}>
@@ -232,11 +264,19 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                             <span>{sec.h}</span>
                           </div>
                         )}
-                        {sec.paragraphs.map((para, pIdx) => (
-                          <p key={pIdx}>
-                            <RichText text={para} citations={entry.citations} />
-                          </p>
-                        ))}
+                        {sec.paragraphs.map((para, pIdx) => {
+                          const paraCitations = extractCitationsForText(para);
+                          return (
+                            <React.Fragment key={pIdx}>
+                              {paraCitations.map((cit) => (
+                                <SideNote key={cit.id} citation={cit} defaultExpanded={false} />
+                              ))}
+                              <p>
+                                <RichText text={para} citations={entry.citations} />
+                              </p>
+                            </React.Fragment>
+                          );
+                        })}
                       </React.Fragment>
                     );
                   })}
@@ -249,8 +289,8 @@ export const Manuscript: React.FC<ManuscriptProps> = ({
                     </div>
                   )}
 
-                  {/* Margin Apparatus Sidenotes */}
-                  {entry.citations?.map((cit) => (
+                  {/* Fallback for unreferenced citations (if any) */}
+                  {unplacedCitations.map((cit) => (
                     <SideNote
                       key={cit.id}
                       citation={cit}

@@ -9,6 +9,10 @@ RUN npm install --ignore-scripts --registry=https://registry.npmmirror.com
 COPY tsconfig.json ./
 COPY src/ ./src/
 
+# Compile TypeScript into production bundle
+RUN npm run build
+
 EXPOSE 8010
 
-CMD ["npm", "run", "dev"]
+CMD ["node", "dist/server.js"]
+

@@ -486,4 +486,3 @@ def test_submit_message_accepts_target_word_count_for_essay_mode():
         assert response.status_code == 200
         mock_proc.assert_called_once()
         assert mock_proc.call_args.kwargs.get("target_word_count") == 600
-

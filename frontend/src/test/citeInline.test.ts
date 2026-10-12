@@ -189,6 +189,39 @@ Read the retention curve first [2].
     expect(answer.sections[1].h).toBe('Sequencing');
     expect(answer.stamp).toBe('test stamp');
   });
+
+  it('parses numbered strategies with inline colons into structured sections', () => {
+    const text = `Growing an Instagram account effectively requires compounding growth loops [E1, E2].
+
+1. Prioritize Early Human Connection over Celebrities for Retention: While celebrity partnerships are powerful, Kaba emphasizes retention [E1].
+
+2. Layer Multiple Growth Loops: Avoid relying on just one acquisition channel [E2].`;
+
+    const answer = buildAnswerData(text, 'stamp 1');
+    expect(answer.lead).toBe('Growing an Instagram account effectively requires compounding growth loops [E1, E2].');
+    expect(answer.sections).toHaveLength(2);
+    expect(answer.sections[0].rn).toBe('I');
+    expect(answer.sections[0].h).toBe('Prioritize Early Human Connection over Celebrities for Retention');
+    expect(answer.sections[0].paragraphs[0]).toContain('While celebrity partnerships are powerful');
+    expect(answer.sections[1].rn).toBe('II');
+    expect(answer.sections[1].h).toBe('Layer Multiple Growth Loops');
+    expect(answer.sections[1].paragraphs[0]).toContain('Avoid relying on just one acquisition channel');
+  });
+
+  it('preserves multi-paragraph body text cleanly when no headings are present', () => {
+    const text = `First paragraph is the lead.
+
+Second paragraph is a separate body block.
+
+Third paragraph is another point.`;
+
+    const answer = buildAnswerData(text, 'stamp 2');
+    expect(answer.lead).toBe('First paragraph is the lead.');
+    expect(answer.sections).toHaveLength(1);
+    expect(answer.sections[0].paragraphs).toHaveLength(2);
+    expect(answer.sections[0].paragraphs[0]).toBe('Second paragraph is a separate body block.');
+    expect(answer.sections[0].paragraphs[1]).toBe('Third paragraph is another point.');
+  });
 });
 
 describe('entriesFromHistory', () => {

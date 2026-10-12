@@ -134,3 +134,45 @@ async def test_indexer_creates_new_source_and_chunks(tmp_path: Path):
     assert mock_session.add.call_count == 1
     assert mock_session.add_all.call_count == 1
     assert mock_session.commit.call_count >= 1
+
+
+def test_sync_archive_tar_enforces_pep706(tmp_path: Path, monkeypatch):
+    import tarfile
+
+    from backend.app.ingestion.syncer import sync_transcripts_repo
+
+    # Mock tarfile without data_filter
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
+
+    # Create a dummy tar.gz file
+    dummy_tar = tmp_path / "dummy.tar.gz"
+    with tarfile.open(dummy_tar, "w:gz") as tar:
+        f = tmp_path / "test.txt"
+        f.write_text("hello", encoding="utf-8")
+        tar.add(f, arcname="test.txt")
+
+    # Mock httpx.Client to return dummy tar
+    class MockResp:
+        content = dummy_tar.read_bytes()
+
+        def raise_for_status(self):
+            pass
+
+    class MockClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def get(self, url):
+            return MockResp()
+
+    monkeypatch.setattr("httpx.Client", MockClient)
+    with pytest.raises(RuntimeError, match="PEP 706"):
+        sync_transcripts_repo(
+            tmp_path / "target", repo_url=None, archive_url="http://fake.tar.gz"
+        )

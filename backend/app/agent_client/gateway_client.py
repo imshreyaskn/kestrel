@@ -66,6 +66,10 @@ class AgentGatewayClient:
         self.timeout = timeout or float(settings.GENERATION_TIMEOUT_SECONDS)
         self._client = http_client
 
+    def set_http_client(self, client: httpx.AsyncClient | None) -> None:
+        """Inject or clear a shared lifespan-managed httpx.AsyncClient."""
+        self._client = client
+
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is not None:
             return self._client
@@ -195,13 +199,21 @@ class AgentGatewayClient:
             try:
                 data = response.json()
             except Exception as exc:
-                logger.error("Agent gateway returned non-JSON body for request %s: %s", req_id, exc)
+                logger.error(
+                    "Agent gateway returned non-JSON body for request %s: %s",
+                    req_id,
+                    exc,
+                )
                 raise RuntimeError(
                     f"Agent gateway returned non-JSON payload: {exc}"
                 ) from exc
 
             if not isinstance(data, dict):
-                logger.error("Agent gateway returned non-object JSON for request %s: %s", req_id, type(data).__name__)
+                logger.error(
+                    "Agent gateway returned non-object JSON for request %s: %s",
+                    req_id,
+                    type(data).__name__,
+                )
                 raise RuntimeError(
                     f"Agent gateway returned invalid JSON structure (expected dict, got {type(data).__name__})"
                 )
@@ -236,3 +248,4 @@ class AgentGatewayClient:
 
 # Default global instance
 default_gateway_client = AgentGatewayClient()
+default_agent_gateway_client = default_gateway_client

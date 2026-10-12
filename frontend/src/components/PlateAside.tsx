@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArtifactData } from '../types';
 import { CSP_HEADER } from '../lib/demoData';
+import { MarkdownViewer } from './MarkdownViewer';
 
 interface PlateAsideProps {
   artifact: ArtifactData;
@@ -13,21 +14,30 @@ export const PlateAside: React.FC<PlateAsideProps> = ({
   plateNumber,
   onExamine,
 }) => {
-  const safeSrcDoc = (artifact.mdHtml || artifact.src).includes('<head>')
-    ? (artifact.mdHtml || artifact.src).replace('<head>', `<head>${CSP_HEADER}`)
+  const isMarkdown = artifact.kind === 'markdown';
+  const safeSrcDoc = (artifact.src || '').includes('<head>')
+    ? artifact.src.replace('<head>', `<head>${CSP_HEADER}`)
     : `<!doctype html><html><head>${CSP_HEADER}<style>body{margin:0;font-family:serif;font-size:12px;padding:12px;}</style></head><body>${artifact.src}</body></html>`;
 
   return (
     <aside className="plate" aria-label={`Margin plate ${plateNumber}`}>
       <div className="plate-in">
-        <div className="plate-mini" aria-hidden="true">
-          <iframe
-            sandbox=""
-            tabIndex={-1}
-            title={`Plate miniature — ${artifact.file}`}
-            srcDoc={safeSrcDoc}
-          />
-        </div>
+        {isMarkdown ? (
+          <div className="plate-mini plate-mini-md" aria-hidden="true">
+            <div className="plate-mini-scale">
+              <MarkdownViewer content={artifact.src} className="pv-doc mini" />
+            </div>
+          </div>
+        ) : (
+          <div className="plate-mini" aria-hidden="true">
+            <iframe
+              sandbox=""
+              tabIndex={-1}
+              title={`Plate miniature — ${artifact.file}`}
+              srcDoc={safeSrcDoc}
+            />
+          </div>
+        )}
         <div className="plate-cap">
           <span className="stamp">
             Plate {plateNumber} · {artifact.file} · {artifact.impression}

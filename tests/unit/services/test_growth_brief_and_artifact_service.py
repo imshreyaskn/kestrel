@@ -152,4 +152,3 @@ async def test_growth_brief_get_latest_for_session():
     assert latest is not None
     assert latest.title == "Latest Brief"
     assert latest.session_id == session_id
-

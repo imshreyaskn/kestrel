@@ -1586,27 +1586,37 @@ html::-webkit-scrollbar-thumb:hover {
 /* =====================================================================
    CITATION BEADS & MARGINALIA
    ===================================================================== */
-/* Citation bead in text — subtle plum pill that blooms on hover */
+/* Citation bead in text — refined circular ink bead per spec §8.6 */
 .sn-ref {
-  font: 600 10px var(--f-mono);
-  color: var(--accent-ink);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
-  vertical-align: super; line-height: 0;
-  margin: 0 2px; padding: 1px 5px;
-  border-radius: 0;
-  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font: 600 9.5px/1 var(--f-mono);
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  vertical-align: baseline;
   position: relative;
-  transition: transform var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
+  top: -5px;
+  margin: 0 2.5px;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(74, 31, 61, 0.15);
+  transition: transform var(--dur-fast) var(--spring-snappy), background var(--dur-fast), box-shadow var(--dur-fast);
 }
 .sn-ref::after {
   content: ''; position: absolute; inset: -6px;
 }
 .sn-ref:hover, .sn-ref.hot, .sn-ref:focus-visible {
-  transform: scale(1.15);
-  background: var(--accent);
+  transform: scale(1.22);
+  background: var(--accent-ink);
   color: var(--surface);
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
+  box-shadow: 0 2px 8px rgba(74, 31, 61, 0.3);
 }
 
 /* In-prose citation hover peek tooltip */
@@ -1662,15 +1672,23 @@ html::-webkit-scrollbar-thumb:hover {
 }
 
 .hero-h .star.sn-ref {
+  display: inline-block;
+  min-width: auto;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--accent);
   border: 0;
   font-size: 0.52em; vertical-align: 0.55em;
-  padding: 0;
+  top: auto;
+  box-shadow: none;
 }
 .hero-h .star.sn-ref:hover {
   background: transparent;
   color: var(--accent-ink);
+  transform: scale(1.15);
+  box-shadow: none;
 }
 
 /* Margin Sidenote Card — Progressive Disclosure */
@@ -1820,6 +1838,16 @@ html::-webkit-scrollbar-thumb:hover {
   width: 200%; height: 412px; border: 0;
   transform: scale(0.5); transform-origin: 0 0;
   pointer-events: none; display: block;
+}
+.plate-mini-md {
+  background: var(--surface);
+}
+.plate-mini-scale {
+  width: 200%;
+  transform: scale(0.5);
+  transform-origin: 0 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 .plate-cap {
   display: flex; justify-content: space-between; gap: 8px;
@@ -2049,6 +2077,84 @@ html::-webkit-scrollbar-thumb:hover {
 .pv-doc ol { padding-left: 22px; margin: 0 0 13px; }
 .pv-doc li { margin-bottom: 10px; }
 .pv-doc .md-i { font-style: italic; color: var(--muted-ink); }
+.pv-doc.mini {
+  padding: 16px 20px;
+  border: none;
+  background: transparent;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pv-doc.mini h1 { font-size: 18px; margin-bottom: 6px; }
+.pv-doc.mini h2 { margin: 16px 0 6px; }
+.pv-doc.mini .pv-table-wrap { margin: 10px 0; }
+.pv-doc.mini .pv-hr { margin: 14px 0; }
+
+.pv-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 18px 0;
+}
+.pv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+}
+.pv-table th {
+  padding: 8px 12px;
+  font: 600 11px var(--f-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: 1px solid var(--border);
+}
+.pv-table td {
+  padding: 8px 12px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.pv-table tr:last-child td {
+  border-bottom: none;
+}
+.pv-hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 28px 0;
+}
+.pv-figure-placeholder {
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: var(--muted-ink);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  display: inline-block;
+  margin: 2px 0;
+}
+.pv-mermaid-frame {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: #FAF8F2;
+  margin: 20px 0;
+  display: block;
+  overflow: hidden;
+}
+.pv-mermaid-fallback {
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  padding: 14px 18px;
+  margin: 20px 0;
+}
+.pv-mermaid-banner {
+  font: 600 11px var(--f-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
 
 /* =====================================================================
    PRINTED SLIP TOASTS

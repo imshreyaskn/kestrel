@@ -26,8 +26,7 @@ Every deliverable must look like it was set by a meticulous editor at a small pr
 - Use GFM tables for comparisons, metrics, experiment plans; align numeric columns right.
 - Use `---` between major parts; blockquotes only for quoted transcript evidence, with [E#].
 - Lists: parallel grammatical form across items; numbered only for sequences.
-- Diagrams: follow the DIAGRAMS rules (one mermaid flowchart max, only when structure is the
-  point). Never diagram what a table states better.
+- Diagrams: when a flow, funnel, timeline, or 2x2 explains faster than prose, include ONE mermaid fenced block (```mermaid). Rules: flowchart LR/TD only; labels <= 6 words; no style/classDef directives; no click handlers; never use a diagram where a table is clearer; HTML artifacts get NO mermaid (build visuals from CSS and tables).
 - No raw HTML inside markdown deliverables.
 
 ## HTML/CSS rules (complete standalone documents)

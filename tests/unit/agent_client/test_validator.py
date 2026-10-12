@@ -194,14 +194,16 @@ def test_validate_essay_custom_word_target_accepted():
     target = 500
     # Range is 450 to 550 words
     essay_text = "Word " * 500
-    raw_llm = json.dumps({
-        "title": "Custom Length Essay",
-        "essay_markdown": essay_text,
-        "approximate_word_count": 500,
-        "writing_path": "actionable",
-        "citations": [{"evidence_id": "E1", "supports": "Key point"}],
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Custom Length Essay",
+            "essay_markdown": essay_text,
+            "approximate_word_count": 500,
+            "writing_path": "actionable",
+            "citations": [{"evidence_id": "E1", "supports": "Key point"}],
+            "insufficient_evidence": False,
+        }
+    )
     res = validate_agent_response(
         raw_llm,
         mode="essay",
@@ -217,14 +219,16 @@ def test_validate_essay_custom_word_target_rejected():
     target = 500
     # Range is 450 to 550 words; 400 words must be rejected
     essay_text = "Word " * 400
-    raw_llm = json.dumps({
-        "title": "Too Short Essay",
-        "essay_markdown": essay_text,
-        "approximate_word_count": 400,
-        "writing_path": "actionable",
-        "citations": [],
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Too Short Essay",
+            "essay_markdown": essay_text,
+            "approximate_word_count": 400,
+            "writing_path": "actionable",
+            "citations": [],
+            "insufficient_evidence": False,
+        }
+    )
     with pytest.raises(EssayLengthError) as exc_info:
         validate_agent_response(
             raw_llm,
@@ -238,15 +242,19 @@ def test_validate_essay_custom_word_target_rejected():
 
 
 def test_validate_essay_insufficient_evidence_bypasses_word_count():
-    decline_text = "The archive lacks sufficient depth on early-stage nuclear fusion marketing."
-    raw_llm = json.dumps({
-        "title": "Topic Not in Archive",
-        "essay_markdown": decline_text,
-        "approximate_word_count": 10,
-        "writing_path": "actionable",
-        "citations": [],
-        "insufficient_evidence": True,
-    })
+    decline_text = (
+        "The archive lacks sufficient depth on early-stage nuclear fusion marketing."
+    )
+    raw_llm = json.dumps(
+        {
+            "title": "Topic Not in Archive",
+            "essay_markdown": decline_text,
+            "approximate_word_count": 10,
+            "writing_path": "actionable",
+            "citations": [],
+            "insufficient_evidence": True,
+        }
+    )
     res = validate_agent_response(
         raw_llm,
         mode="essay",
@@ -258,14 +266,16 @@ def test_validate_essay_insufficient_evidence_bypasses_word_count():
 
 
 def test_validate_essay_rejects_empty_markdown_even_when_insufficient():
-    raw_llm = json.dumps({
-        "title": "Declined",
-        "essay_markdown": "   ",
-        "approximate_word_count": 0,
-        "writing_path": "actionable",
-        "citations": [],
-        "insufficient_evidence": True,
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Declined",
+            "essay_markdown": "   ",
+            "approximate_word_count": 0,
+            "writing_path": "actionable",
+            "citations": [],
+            "insufficient_evidence": True,
+        }
+    )
     with pytest.raises(StructuredExtractionError) as exc_info:
         validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
     assert "essay_markdown must not be empty" in str(exc_info.value)
@@ -274,14 +284,16 @@ def test_validate_essay_rejects_empty_markdown_even_when_insufficient():
 def test_validate_essay_strips_single_and_multi_citations_from_word_count():
     # 500 actual words + multi-citation tags
     prose = ("strategy " * 500) + " [E1, E2] [E1,E3] [E1]"
-    raw_llm = json.dumps({
-        "title": "Citation Stripping Essay",
-        "essay_markdown": prose,
-        "approximate_word_count": 500,
-        "writing_path": "actionable",
-        "citations": [{"evidence_id": "E1", "supports": "Point"}],
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Citation Stripping Essay",
+            "essay_markdown": prose,
+            "approximate_word_count": 500,
+            "writing_path": "actionable",
+            "citations": [{"evidence_id": "E1", "supports": "Point"}],
+            "insufficient_evidence": False,
+        }
+    )
     res = validate_agent_response(
         raw_llm,
         mode="essay",
@@ -293,71 +305,91 @@ def test_validate_essay_strips_single_and_multi_citations_from_word_count():
 
 
 def test_validate_research_rejects_empty_answer():
-    raw_llm = json.dumps({
-        "answer_markdown": "   ",
-        "citations": [],
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "answer_markdown": "   ",
+            "citations": [],
+            "insufficient_evidence": False,
+        }
+    )
     with pytest.raises(StructuredExtractionError) as exc_info:
         validate_agent_response(raw_llm, mode="research", valid_evidence_ids=set())
     assert "answer_markdown must not be empty" in str(exc_info.value)
 
 
 def test_validate_growth_brief_rejects_empty_recommendation_when_sufficient():
-    raw_llm = json.dumps({
-        "title": "Growth Brief",
-        "problem": "Churn",
-        "research_summary": "Summary",
-        "recommendation": "   ",
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Growth Brief",
+            "problem": "Churn",
+            "research_summary": "Summary",
+            "recommendation": "   ",
+            "insufficient_evidence": False,
+        }
+    )
     with pytest.raises(StructuredExtractionError) as exc_info:
         validate_agent_response(raw_llm, mode="growth_brief", valid_evidence_ids=set())
     assert "recommendation must not be empty" in str(exc_info.value)
 
 
 def test_validate_artifact_rejects_empty_content():
-    raw_llm = json.dumps({
-        "title": "Empty Plate",
-        "content": "   ",
-        "kind": "markdown",
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Empty Plate",
+            "content": "   ",
+            "kind": "markdown",
+        }
+    )
     with pytest.raises(StructuredExtractionError) as exc_info:
-        validate_agent_response(raw_llm, mode="artifact_markdown", valid_evidence_ids=set())
+        validate_agent_response(
+            raw_llm, mode="artifact_markdown", valid_evidence_ids=set()
+        )
     assert "Artifact content must not be empty" in str(exc_info.value)
 
 
 def test_validate_artifact_rejects_empty_title():
-    raw_llm = json.dumps({
-        "title": "   ",
-        "content": "# Valid Content\nProse here.",
-        "kind": "markdown",
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "   ",
+            "content": "# Valid Content\nProse here.",
+            "kind": "markdown",
+        }
+    )
     with pytest.raises(StructuredExtractionError) as exc_info:
-        validate_agent_response(raw_llm, mode="artifact_markdown", valid_evidence_ids=set())
+        validate_agent_response(
+            raw_llm, mode="artifact_markdown", valid_evidence_ids=set()
+        )
     assert "Artifact title must not be empty" in str(exc_info.value)
 
 
 def test_validate_artifact_rejects_emoji_styling():
     # 1. Emoji in content
-    raw_llm_content_emoji = json.dumps({
-        "title": "Clean Title",
-        "content": "# Executive Brief\nHere is growth advice 🚀 for the team.",
-        "kind": "markdown",
-    })
+    raw_llm_content_emoji = json.dumps(
+        {
+            "title": "Clean Title",
+            "content": "# Executive Brief\nHere is growth advice 🚀 for the team.",
+            "kind": "markdown",
+        }
+    )
     with pytest.raises(AgentOutputError) as exc_info:
-        validate_agent_response(raw_llm_content_emoji, mode="artifact_markdown", valid_evidence_ids=set())
+        validate_agent_response(
+            raw_llm_content_emoji, mode="artifact_markdown", valid_evidence_ids=set()
+        )
     assert exc_info.value.reason_code == "ARTIFACT_STYLE"
     assert "emoji" in exc_info.value.detail
 
     # 2. Emoji in title
-    raw_llm_title_emoji = json.dumps({
-        "title": "Growth Playbook ✨",
-        "content": "# Executive Brief\nHere is growth advice for the team.",
-        "kind": "markdown",
-    })
+    raw_llm_title_emoji = json.dumps(
+        {
+            "title": "Growth Playbook ✨",
+            "content": "# Executive Brief\nHere is growth advice for the team.",
+            "kind": "markdown",
+        }
+    )
     with pytest.raises(AgentOutputError) as exc_info2:
-        validate_agent_response(raw_llm_title_emoji, mode="artifact_markdown", valid_evidence_ids=set())
+        validate_agent_response(
+            raw_llm_title_emoji, mode="artifact_markdown", valid_evidence_ids=set()
+        )
     assert exc_info2.value.reason_code == "ARTIFACT_STYLE"
     assert "emoji" in exc_info2.value.detail
 
@@ -407,11 +439,13 @@ def test_enforce_inline_labels_strict_and_lenient():
     assert "[E2]" in cleaned_lenient
 
     # validate_agent_response strict mode raises INVALID_LABELS
-    raw_llm = json.dumps({
-        "answer_markdown": "Lenny said [E99] is great.",
-        "citations": [],
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "answer_markdown": "Lenny said [E99] is great.",
+            "citations": [],
+            "insufficient_evidence": False,
+        }
+    )
     with pytest.raises(AgentOutputError) as exc_info:
         validate_agent_response(
             raw_llm,
@@ -464,7 +498,9 @@ def test_validate_research_raw_prose_fallback():
     assert res.insufficient_evidence is False
 
     # 3. Raw prose with citations extracts valid ones and prunes phantoms
-    raw_with_citations = "Casey Winters explains sequencing [E1]. Some phantom claim [E99]."
+    raw_with_citations = (
+        "Casey Winters explains sequencing [E1]. Some phantom claim [E99]."
+    )
     res_cited = validate_agent_response(
         raw_with_citations,
         mode="research",
@@ -572,33 +608,113 @@ def test_reconcile_inline_labels_adversarial_cases():
 
 
 def test_validate_essay_valid_writing_paths():
-    for path in ["actionable", "analytical", "aspirational", "anthropological", "ANALYTICAL", "Aspirational "]:
-        raw_llm = json.dumps({
-            "title": "Path Essay",
-            "essay_markdown": "word " * 1200,
-            "approximate_word_count": 1200,
-            "writing_path": path,
-            "citations": [],
-            "insufficient_evidence": False,
-        })
+    for path in [
+        "actionable",
+        "analytical",
+        "aspirational",
+        "anthropological",
+        "ANALYTICAL",
+        "Aspirational ",
+    ]:
+        raw_llm = json.dumps(
+            {
+                "title": "Path Essay",
+                "essay_markdown": "word " * 1200,
+                "approximate_word_count": 1200,
+                "writing_path": path,
+                "citations": [],
+                "insufficient_evidence": False,
+            }
+        )
         res = validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
         assert isinstance(res, ValidatedEssayResponse)
         assert res.writing_path == path.strip().lower()
 
 
 def test_validate_essay_rejects_invalid_writing_path():
-    raw_llm = json.dumps({
-        "title": "Invalid Path Essay",
-        "essay_markdown": "word " * 1200,
-        "approximate_word_count": 1200,
-        "writing_path": "philosophical",
-        "citations": [],
-        "insufficient_evidence": False,
-    })
+    raw_llm = json.dumps(
+        {
+            "title": "Invalid Path Essay",
+            "essay_markdown": "word " * 1200,
+            "approximate_word_count": 1200,
+            "writing_path": "philosophical",
+            "citations": [],
+            "insufficient_evidence": False,
+        }
+    )
     with pytest.raises(AgentOutputError) as exc_info:
         validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
     assert exc_info.value.reason_code == "INVALID_WRITING_PATH"
     assert "writing_path must be one of" in exc_info.value.detail
 
 
+def test_validate_essay_writing_path_keyword_fallback():
+    for noisy_path, expected in [
+        ("actionable path.", "actionable"),
+        ("analytical framework", "analytical"),
+        ("aspirational vision", "aspirational"),
+        ("anthropological observation", "anthropological"),
+    ]:
+        raw_llm = json.dumps(
+            {
+                "title": "Path Essay",
+                "essay_markdown": "word " * 1200,
+                "approximate_word_count": 1200,
+                "writing_path": noisy_path,
+                "citations": [],
+                "insufficient_evidence": False,
+            }
+        )
+        res = validate_agent_response(raw_llm, mode="essay", valid_evidence_ids=set())
+        assert isinstance(res, ValidatedEssayResponse)
+        assert res.writing_path == expected
 
+
+def test_validate_artifact_rejects_emoji_and_preserves_typographic_marks():
+    # 1. Pictorial emoji fails artifact validation with ARTIFACT_STYLE
+    emoji_payload = json.dumps(
+        {
+            "kind": "markdown",
+            "title": "Growth Checklist 🚀",
+            "content": "# Checklist\n\n- [ ] Fast shipping 💡",
+            "source_evidence_ids": [],
+        }
+    )
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            emoji_payload, mode="artifact_markdown", valid_evidence_ids=set()
+        )
+    assert exc_info.value.reason_code == "ARTIFACT_STYLE"
+    assert "emoji characters are banned" in exc_info.value.detail
+
+    # 2. Standard typographic symbols (✓, ✗, ★, →) in comparison tables are permitted
+    clean_table_payload = json.dumps(
+        {
+            "kind": "markdown",
+            "title": "Evaluation Matrix",
+            "content": "# Matrix\n\n| Feature | Status |\n|---|---|\n| Onboarding | ✓ Pass |\n| Churn | ✗ Fail |\n| Delight | ★ High |\n| Next | → Test |",
+            "source_evidence_ids": [],
+        }
+    )
+    res = validate_agent_response(
+        clean_table_payload, mode="artifact_markdown", valid_evidence_ids=set()
+    )
+    assert isinstance(res, ValidatedArtifactResponse)
+    assert "✓ Pass" in res.content
+    assert "★ High" in res.content
+
+
+def test_validate_artifact_rejects_whitespace_content_with_reason_code():
+    empty_payload = json.dumps(
+        {
+            "kind": "markdown",
+            "title": "Empty Deliverable",
+            "content": "   \n\t  ",
+            "source_evidence_ids": [],
+        }
+    )
+    with pytest.raises(AgentOutputError) as exc_info:
+        validate_agent_response(
+            empty_payload, mode="artifact_markdown", valid_evidence_ids=set()
+        )
+    assert exc_info.value.reason_code == "EMPTY_ANSWER"

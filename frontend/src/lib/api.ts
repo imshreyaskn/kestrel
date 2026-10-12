@@ -250,7 +250,6 @@ function artifactRecordToData(a: ArtifactRecord): ArtifactData {
     title: a.title,
     kind: a.kind,
     src: a.preview_content || a.content,
-    mdHtml: a.kind === 'markdown' ? a.content : undefined,
     version: a.version,
     impression: `Plate ${a.version} · ${a.kind.toUpperCase()}`,
     createdAt: a.created_at,

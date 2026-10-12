@@ -1,4 +1,4 @@
-.PHONY: help dev demo test test-unit test-integration lint typecheck ingest ingest-check reindex stats benchmark down clean reset-demo-data
+.PHONY: help dev demo test test-unit test-integration lint typecheck ingest ingest-check reindex stats benchmark benchmark-ci down clean reset-demo-data
 
 PYTHON ?= python
 DOCKER_COMPOSE ?= docker compose
@@ -13,8 +13,9 @@ help:
 	@echo "  make typecheck    Run mypy on backend and tests, tsc on frontend"
 	@echo "  make ingest       Sync and index upstream podcast transcripts"
 	@echo "  make ingest-check Show database knowledge base stats"
-	@echo "  make reindex      Force full transcript re-index"
-	@echo "  make benchmark    Run 20-case retrieval evaluation benchmark"
+	@echo "  make reindex      Force full transcript re-index (runs in API container)"
+	@echo "  make benchmark    Run 20-case retrieval evaluation benchmark (real embeddings)"
+	@echo "  make benchmark-ci Run offline benchmark with mock embeddings (CI only)"
 	@echo "  make down         Stop all running containers"
 	@echo "  make clean        Clean build caches and artifacts"
 
@@ -62,9 +63,12 @@ ingest-check:
 stats: ingest-check
 
 reindex:
-	$(PYTHON) -m backend.app.ingestion.cli reindex
+	$(DOCKER_COMPOSE) exec api python -m backend.app.ingestion.cli reindex
 
 benchmark:
+	$(DOCKER_COMPOSE) exec api python -m backend.app.ingestion.cli benchmark
+
+benchmark-ci:
 	$(PYTHON) -m backend.app.ingestion.cli benchmark --fake-embed
 
 down:

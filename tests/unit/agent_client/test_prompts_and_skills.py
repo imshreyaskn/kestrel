@@ -101,7 +101,6 @@ def test_build_system_prompt_for_all_modes():
             assert "Hard bans" in prompt
 
 
-
 def test_build_system_prompt_includes_current_date():
     import datetime
 
@@ -132,7 +131,9 @@ def test_build_repair_system_prompt_targeted_guidance():
         detail="E99,E100",
     )
     assert "Reason: INVALID_LABELS." in p_labels
-    assert "These inline labels do not exist in this run's evidence: E99,E100" in p_labels
+    assert (
+        "These inline labels do not exist in this run's evidence: E99,E100" in p_labels
+    )
 
     # 3. Truncated output failure
     p_trunc = build_repair_system_prompt(
@@ -162,5 +163,7 @@ def test_build_repair_system_prompt_targeted_guidance():
         detail="philosophical",
     )
     assert "Reason: INVALID_WRITING_PATH." in p_path
-    assert "writing_path must be one of: actionable, analytical, aspirational, anthropological" in p_path
-
+    assert (
+        "writing_path must be one of: actionable, analytical, aspirational, anthropological"
+        in p_path
+    )

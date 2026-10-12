@@ -189,9 +189,30 @@ async def test_get_session_messages_newest_page_ordering():
     t2 = datetime.datetime(2024, 1, 1, 10, 1, tzinfo=datetime.UTC)
     t3 = datetime.datetime(2024, 1, 1, 10, 2, tzinfo=datetime.UTC)
 
-    m1 = Message(id=uuid.uuid4(), session_id=sess_id, role="user", content="Turn 1", created_at=t1, sources=[])
-    m2 = Message(id=uuid.uuid4(), session_id=sess_id, role="assistant", content="Turn 2", created_at=t2, sources=[])
-    m3 = Message(id=uuid.uuid4(), session_id=sess_id, role="user", content="Turn 3", created_at=t3, sources=[])
+    m1 = Message(
+        id=uuid.uuid4(),
+        session_id=sess_id,
+        role="user",
+        content="Turn 1",
+        created_at=t1,
+        sources=[],
+    )
+    m2 = Message(
+        id=uuid.uuid4(),
+        session_id=sess_id,
+        role="assistant",
+        content="Turn 2",
+        created_at=t2,
+        sources=[],
+    )
+    m3 = Message(
+        id=uuid.uuid4(),
+        session_id=sess_id,
+        role="user",
+        content="Turn 3",
+        created_at=t3,
+        sources=[],
+    )
 
     # The SQL query orders desc (newest first: [m3, m2, m1])
     mock_msg_res = MagicMock()
@@ -199,11 +220,12 @@ async def test_get_session_messages_newest_page_ordering():
 
     mock_db.execute.side_effect = [mock_sess_res, mock_msg_res]
 
-    messages = await SessionService.get_session_messages(mock_db, sess_id, user_id, limit=3, offset=0)
+    messages = await SessionService.get_session_messages(
+        mock_db, sess_id, user_id, limit=3, offset=0
+    )
 
     # Returned array should be reversed back into chronological order: [m1, m2, m3]
     assert len(messages) == 3
     assert messages[0]["content"] == "Turn 1"
     assert messages[1]["content"] == "Turn 2"
     assert messages[2]["content"] == "Turn 3"
-

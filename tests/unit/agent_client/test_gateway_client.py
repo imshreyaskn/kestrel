@@ -133,9 +133,13 @@ async def test_gateway_client_typed_errors_and_stop_reason():
     def handler_400(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={"error": "missing_api_key"})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_400)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_400)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
-        with pytest.raises(GatewayConfigError, match="Cloud provider API key is not configured"):
+        with pytest.raises(
+            GatewayConfigError, match="Cloud provider API key is not configured"
+        ):
             await client.generate(
                 session_id="sess-1",
                 current_user_message="test",
@@ -150,7 +154,9 @@ async def test_gateway_client_typed_errors_and_stop_reason():
     def handler_404(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"error": "model_not_found"})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_404)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_404)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
         with pytest.raises(ModelNotAllowedError, match="Gateway rejected model"):
             await client.generate(
@@ -167,7 +173,9 @@ async def test_gateway_client_typed_errors_and_stop_reason():
     def handler_413(request: httpx.Request) -> httpx.Response:
         return httpx.Response(413, json={"error": "payload_too_large"})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_413)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_413)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
         with pytest.raises(PayloadTooLargeError, match="Generation payload exceeded"):
             await client.generate(
@@ -195,7 +203,9 @@ async def test_gateway_client_typed_errors_and_stop_reason():
             },
         )
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_stop_reason)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_stop_reason)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
         res = await client.generate(
             session_id="sess-1",
@@ -212,9 +222,13 @@ async def test_gateway_client_typed_errors_and_stop_reason():
     def handler_400_invalid(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, json={"error": "invalid_payload"})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_400_invalid)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_400_invalid)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
-        with pytest.raises(GatewayConfigError, match="Gateway rejected request: invalid_payload"):
+        with pytest.raises(
+            GatewayConfigError, match="Gateway rejected request: invalid_payload"
+        ):
             await client.generate(
                 session_id="sess-1",
                 current_user_message="test",
@@ -229,11 +243,17 @@ async def test_gateway_client_typed_errors_and_stop_reason():
 @pytest.mark.asyncio
 async def test_gateway_client_non_json_response_raises_runtime_error():
     def handler_html(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text="<html><body>502 Bad Gateway Proxy Error</body></html>")
+        return httpx.Response(
+            200, text="<html><body>502 Bad Gateway Proxy Error</body></html>"
+        )
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_html)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_html)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
-        with pytest.raises(RuntimeError, match="Agent gateway returned non-JSON payload"):
+        with pytest.raises(
+            RuntimeError, match="Agent gateway returned non-JSON payload"
+        ):
             await client.generate(
                 session_id="sess-1",
                 current_user_message="test",
@@ -250,7 +270,9 @@ async def test_gateway_client_non_dict_json_response_raises_runtime_error():
     def handler_array(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="[1, 2, 3]")
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler_array)) as http_client:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler_array)
+    ) as http_client:
         client = AgentGatewayClient(http_client=http_client)
         with pytest.raises(RuntimeError, match="invalid JSON structure"):
             await client.generate(
@@ -262,5 +284,3 @@ async def test_gateway_client_non_dict_json_response_raises_runtime_error():
                 conversation_context=[],
                 evidence=[],
             )
-
-

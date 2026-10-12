@@ -6,6 +6,7 @@ Unit tests for FastAPI core endpoints:
 - Correlation ID propagation and header timing
 """
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
@@ -88,3 +89,45 @@ def test_no_duplicate_routes():
     dupes = {r for r in routes if routes.count(r) > 1}
     assert not dupes, f"Duplicate route registrations found: {dupes}"
 
+
+def test_json_log_formatter_escapes_quotes_and_newlines():
+    """Verify that JsonLogFormatter always emits parseable JSON even with adversarial characters."""
+    import json
+    import logging
+
+    from backend.app.main import JsonLogFormatter
+
+    formatter = JsonLogFormatter()
+    # Message with nested double quotes, newlines, and escape sequences
+    record = logging.LogRecord(
+        name="test_logger",
+        level=logging.ERROR,
+        pathname="test.py",
+        lineno=42,
+        msg='Failed with "quoted text" and \nnewline and \\backslash and "curly" {braces}',
+        args=(),
+        exc_info=None,
+    )
+    record.extra_fields = {"request_id": "req-123", "meta": {"k": 'val "with" quote'}}
+    output = formatter.format(record)
+
+    # Must parse without JSONDecodeError
+    parsed = json.loads(output)
+    assert parsed["logger"] == "test_logger"
+    assert parsed["level"] == "ERROR"
+    assert 'Failed with "quoted text"' in parsed["message"]
+    assert parsed["request_id"] == "req-123"
+    assert parsed["meta"]["k"] == 'val "with" quote'
+
+
+@pytest.mark.asyncio
+async def test_lifespan_manages_http_client_and_verify_availability():
+    """Verify lifespan sets shared httpx client on gateway and closes it on exit."""
+    from backend.app.agent_client.gateway_client import default_agent_gateway_client
+    from backend.app.main import lifespan
+
+    async with lifespan(app):
+        assert default_agent_gateway_client._client is not None
+        assert app.state.gateway_http is default_agent_gateway_client._client
+
+    assert default_agent_gateway_client._client is None

@@ -3,31 +3,108 @@ FastAPI Application Baseline (Codename: Kestrel)
 Conforming strictly to IMPLEMENTATION_SPEC.md §6 & §11
 """
 
+import json
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
+from typing import Any
 
+import httpx
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.app.agent_client.gateway_client import default_agent_gateway_client
 from backend.app.api.v1 import api_v1_router
 from backend.app.core.config import settings
+from backend.app.retrieval.embedder import get_embedding_provider
 
-# Configure basic structured logging
-logging.basicConfig(
-    level=getattr(logging, settings.APP_LOG_LEVEL.upper(), logging.INFO),
-    format='{"timestamp":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","message":"%(message)s"}',
-)
+
+class JsonLogFormatter(logging.Formatter):
+    """
+    Structured JSON log formatter conforming to IMPLEMENTATION_SPEC.md §11.1.
+    Safely serializes messages, exception tracebacks, and contextual metadata without
+    f-string corruption on quotes, newlines, or escape sequences.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_payload: dict[str, Any] = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            log_payload["exception"] = self.formatException(record.exc_info)
+        if hasattr(record, "extra_fields") and isinstance(record.extra_fields, dict):
+            log_payload.update(record.extra_fields)
+        return json.dumps(log_payload, ensure_ascii=False)
+
+
+# Configure structured JSON logging
+_handler = logging.StreamHandler()
+_handler.setFormatter(JsonLogFormatter(datefmt="%Y-%m-%dT%H:%M:%S%z"))
+_root_logger = logging.getLogger()
+_root_logger.setLevel(getattr(logging, settings.APP_LOG_LEVEL.upper(), logging.INFO))
+_root_logger.handlers.clear()
+_root_logger.addHandler(_handler)
+
 logger = logging.getLogger("kestrel.app")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager managing pooled HTTP connections and bootstrap verification.
+    Conforms to spec §7.4 and architecture §6.
+    """
+    # 1. Startup: initialize shared pooled HTTP client for agent gateway with keep-alive limits
+    limits = httpx.Limits(
+        max_keepalive_connections=20, max_connections=50, keepalive_expiry=30.0
+    )
+    gateway_http = httpx.AsyncClient(
+        timeout=float(settings.GENERATION_TIMEOUT_SECONDS),
+        limits=limits,
+    )
+    app.state.gateway_http = gateway_http
+    default_agent_gateway_client.set_http_client(gateway_http)
+
+    # 2. Bootstrap verification: verify Ollama embedder availability (spec §7.4)
+    embedder = get_embedding_provider()
+    try:
+        available = await embedder.verify_availability()
+        if available:
+            logger.info(
+                "Ollama embedding model verified and ready",
+                extra={"extra_fields": {"model": settings.OLLAMA_EMBEDDING_MODEL}},
+            )
+        else:
+            logger.warning(
+                "Ollama embedding model verification returned False; local embedding may fail if Ollama is not running",
+                extra={"extra_fields": {"model": settings.OLLAMA_EMBEDDING_MODEL}},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Could not verify Ollama embedding availability on startup",
+            extra={"extra_fields": {"error": str(exc)}},
+        )
+
+    yield
+
+    # 3. Shutdown: clean up pooled HTTP client
+    default_agent_gateway_client.set_http_client(None)
+    await gateway_http.aclose()
+
 
 app = FastAPI(
     title="The Lenny Growth Assistant (Kestrel)",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS Middleware
@@ -69,13 +146,32 @@ async def request_id_and_timing_middleware(request: Request, call_next):
         # Avoid spamming logs on health probes
         if not request.url.path.endswith("/health/live"):
             logger.info(
-                f'{{"method":"{request.method}","path":"{request.url.path}","status":{response.status_code},"duration_ms":{duration_ms:.2f},"request_id":"{req_id}"}}'
+                "HTTP request completed",
+                extra={
+                    "extra_fields": {
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status": response.status_code,
+                        "duration_ms": round(duration_ms, 2),
+                        "request_id": req_id,
+                    }
+                },
             )
         return response
     except Exception as exc:  # noqa: BLE001
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.error(
-            f'{{"method":"{request.method}","path":"{request.url.path}","error":"{exc!s}","duration_ms":{duration_ms:.2f},"request_id":"{req_id}"}}'
+            "HTTP request failed",
+            exc_info=True,
+            extra={
+                "extra_fields": {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "error": str(exc),
+                    "duration_ms": round(duration_ms, 2),
+                    "request_id": req_id,
+                }
+            },
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

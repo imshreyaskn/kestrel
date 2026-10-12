@@ -380,7 +380,10 @@ class ConversationService:
             # -------------------------------------------------------------
             yield {
                 "event": "stage",
-                "data": {"stage": "loading_context", "label": "Loading session context..."},
+                "data": {
+                    "stage": "loading_context",
+                    "label": "Loading session context...",
+                },
             }
 
             # 1. Enforce user ownership of session
@@ -503,7 +506,9 @@ class ConversationService:
                 (m.content for m in reversed(prior_messages) if m.role == "assistant"),
                 None,
             )
-            retrieval_query = build_retrieval_query(content, prior_user, prior_assistant)
+            retrieval_query = build_retrieval_query(
+                content, prior_user, prior_assistant
+            )
             logger.debug(
                 "Run %s: retrieval query: %r (original: %r)",
                 run_id,
@@ -765,8 +770,11 @@ class ConversationService:
             assistant_message.metadata_ = {
                 "evidence_rrf_scores": {
                     e.evidence_id: e.rrf_score for e in evidence_items
-                }
+                },
+                "gateway_latency_ms": gw_result.latency_ms,
             }
+            if gw_result.usage:
+                assistant_message.metadata_["token_usage"] = gw_result.usage
             if isinstance(validated, ValidatedEssayResponse):
                 skill_obj = default_skill_loader.load_skill("ship-30-for-30")
                 skill_ver = (
@@ -776,7 +784,6 @@ class ConversationService:
                 )
                 assistant_message.metadata_["skill"] = skill_ver
                 assistant_message.metadata_["writing_path"] = validated.writing_path
-
 
             # Persist message_sources join table records for validated citations.
             # retrieval_rank is the ordinal position in the final fused
@@ -793,7 +800,8 @@ class ConversationService:
                 if ev and ev.chunk_id:
                     ret_rank = (
                         int(cit.evidence_id[1:])
-                        if cit.evidence_id.startswith("E") and cit.evidence_id[1:].isdigit()
+                        if cit.evidence_id.startswith("E")
+                        and cit.evidence_id[1:].isdigit()
                         else (len(citation_payloads) + 1)
                     )
                     # Respect PrimaryKeyConstraint("message_id", "chunk_id")

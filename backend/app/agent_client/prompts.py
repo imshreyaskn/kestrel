@@ -113,7 +113,9 @@ def _get_document_craft_parts() -> tuple[str, str, str, str, str]:
                 after = after.split(end_h, 1)[0]
         return (start_hdr + after).strip()
 
-    preamble = text.split("## Hard bans", 1)[0].strip() if "## Hard bans" in text else ""
+    preamble = (
+        text.split("## Hard bans", 1)[0].strip() if "## Hard bans" in text else ""
+    )
     hard_bans = extract_between(
         "## Hard bans",
         ["## Markdown rules", "## HTML/CSS rules", "## Before returning"],
@@ -180,7 +182,9 @@ def build_system_prompt(
         if essay_word_target:
             lo = round(essay_word_target * 0.9)
             hi = round(essay_word_target * 1.1)
-            target_desc = f"Target ~{essay_word_target} words (accepted range {lo}–{hi} words)."
+            target_desc = (
+                f"Target ~{essay_word_target} words (accepted range {lo}–{hi} words)."
+            )
             approx_count = essay_word_target
         else:
             lo = 1150
