@@ -168,7 +168,11 @@ export function buildAnswerData(content: string, stamp: string): AnswerData {
       hasCompletedLead = true;
 
       if (remainingParagraph) {
-        paragraphLines.push(remainingParagraph);
+        paragraphLines.push(
+          remainingParagraph
+            .replace(/^\*\*\s+/, '')
+            .replace(/\s+\*\*$/, '')
+        );
       }
       continue;
     }
